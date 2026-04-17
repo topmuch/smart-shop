@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { AlertTriangle, AlertOctagon } from 'lucide-react';
-import { formatCurrency, parseMoney, safePercentage } from '@/lib/safe-helpers';
+import { formatCurrency, parseMoney } from '@/lib/safe-helpers';
 
 interface BudgetBarProps {
   spent: number;

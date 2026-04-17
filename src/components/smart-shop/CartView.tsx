@@ -9,7 +9,6 @@ import {
   Loader2,
   ScanBarcode,
   Trash2,
-  ChevronDown,
   ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';

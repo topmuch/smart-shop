@@ -9,8 +9,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  AreaChart,
-  Area,
   Cell,
   LineChart,
   Line,
@@ -52,7 +50,7 @@ import { useDashboard } from '@/hooks/use-dashboard';
 import { CATEGORY_COLORS } from '@/types';
 import type { SessionSummary } from '@/types';
 import { cn } from '@/lib/utils';
-import { formatCurrency, formatSafeDateShort, parseMoney, safePercentage } from '@/lib/safe-helpers';
+import { formatCurrency, formatSafeDateShort, parseMoney } from '@/lib/safe-helpers';
 import { motion } from 'framer-motion';
 
 interface DashboardViewProps {
