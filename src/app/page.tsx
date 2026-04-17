@@ -1,383 +1,202 @@
 "use client";
 
 /**
- * Smart Shop - Main Application Page
- * Single-page application with tab-based navigation integrating all features:
- * Shopping Lists, Barcode Scanner, Cart/Budget, Dashboard, Settings
+ * Smart Shop - Main Page Router
+ * Client-side routing between:
+ * - Landing Page (unauthenticated visitors)
+ * - Auth Views (login, register, forgot-password)
+ * - App (authenticated users — full Smart Shop experience)
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  ShoppingCart,
-  ScanBarcode,
-  LayoutDashboard,
-  Settings,
-  ListChecks,
-  Menu,
-  X,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { useAuthStore } from "@/stores/auth-store";
+import { LandingPage } from "@/components/smart-shop/LandingPage";
+import { AuthViews, type AuthView } from "@/components/smart-shop/AuthViews";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
-import { OfflineIndicator } from "@/components/smart-shop/OfflineIndicator";
-import { ShoppingListView } from "@/components/smart-shop/ShoppingListView";
-import { ScannerView } from "@/components/smart-shop/ScannerView";
-import { CartView } from "@/components/smart-shop/CartView";
-import { DashboardView } from "@/components/smart-shop/DashboardView";
-import { SettingsPanel } from "@/components/smart-shop/SettingsPanel";
-import { useOfflineSync } from "@/hooks/use-offline-sync";
-import type { AppTab, UserProfile } from "@/types";
+import dynamic from "next/dynamic";
 
 /* ============================================================
-   Tab Navigation Configuration
+   View types for client-side routing
    ============================================================ */
 
-interface NavTab {
-  id: AppTab;
-  label: string;
-  icon: React.ElementType;
-}
+type UnauthView =
+  | { type: "landing" }
+  | { type: "auth"; authView: AuthView };
 
-const NAV_TABS: NavTab[] = [
-  { id: "lists", label: "Listes", icon: ListChecks },
-  { id: "scanner", label: "Scanner", icon: ScanBarcode },
-  { id: "cart", label: "Panier", icon: ShoppingCart },
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "settings", label: "Réglages", icon: Settings },
-];
+type EffectiveView =
+  | { type: "loading" }
+  | { type: "landing" }
+  | { type: "auth"; authView: AuthView }
+  | { type: "app" };
 
 /* ============================================================
    Page Transition Variants
    ============================================================ */
 
-const pageVariants = {
-  initial: { opacity: 0, y: 8, scale: 0.98 },
-  animate: { opacity: 1, y: 0, scale: 1 },
-  exit: { opacity: 0, y: -8, scale: 0.98 },
-};
-
-const pageTransition = {
-  type: "spring",
-  stiffness: 300,
-  damping: 30,
+const viewVariants = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0 },
+  transition: { duration: 0.25 },
 };
 
 /* ============================================================
-   Main Application Component
+   SmartShopApp Lazy Component
    ============================================================ */
 
-export default function SmartShopApp() {
-  /* --- State --- */
-  const [activeTab, setActiveTab] = useState<AppTab>("lists");
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+const SmartShopAppLazy = dynamic(
+  () =>
+    import("@/components/smart-shop/SmartShopApp").then(
+      (mod) => mod.SmartShopApp
+    ),
+  {
+    loading: () => <AppLoadingScreen />,
+    ssr: false,
+  }
+);
 
-  const { isOnline, pendingCount, isSyncing } = useOfflineSync();
+/* ============================================================
+   Main Page Component
+   ============================================================ */
 
-  /* --- Demo User Initialization --- */
-  const initDemoUser = useCallback(async () => {
-    try {
-      const res = await fetch("/api/user", { method: "POST" });
-      if (!res.ok) throw new Error("Failed to create demo user");
-      const data = await res.json();
-      // API returns { user: {...} }, extract the nested user object
-      const userObj = data.user ?? data;
-      setUser(userObj);
-    } catch (error) {
-      console.error("Failed to initialize demo user:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+export default function SmartShopPage() {
+  const [unauthView, setUnauthView] = useState<UnauthView>({ type: "landing" });
+  const { user, isLoading, isAuthenticated, checkSession, login, register, logout } =
+    useAuthStore();
 
+  /* --- Check session on mount --- */
   useEffect(() => {
-    initDemoUser();
-  }, [initDemoUser]);
+    checkSession();
+  }, [checkSession]);
 
-  /* --- Tab Change Handler --- */
-  const handleTabChange = useCallback((tab: AppTab) => {
-    setActiveTab(tab);
-    setMobileMenuOpen(false);
+  /* --- Derive effective view from auth state (no setState in effect) --- */
+  const effectiveView: EffectiveView = useMemo(() => {
+    if (isLoading) return { type: "loading" };
+    if (isAuthenticated && user) return { type: "app" };
+    return unauthView;
+  }, [isLoading, isAuthenticated, user, unauthView]);
+
+  /* --- Navigation handlers (only for unauthenticated state) --- */
+  const handleLandingNavigate = useCallback(
+    (authView: "login" | "register") => {
+      setUnauthView({ type: "auth", authView });
+    },
+    []
+  );
+
+  const handleAuthNavigate = useCallback((authView: AuthView) => {
+    setUnauthView({ type: "auth", authView });
   }, []);
 
-  /* --- Loading State --- */
-  if (isLoading) {
-    return <LoadingScreen />;
-  }
+  const handleAuthBack = useCallback(() => {
+    setUnauthView({ type: "landing" });
+  }, []);
 
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-muted-foreground">
-          Erreur de chargement. Veuillez actualiser la page.
-        </p>
-      </div>
-    );
-  }
+  const handleLogout = useCallback(async () => {
+    await logout();
+    setUnauthView({ type: "landing" });
+  }, [logout]);
 
   /* ============================================================
      Render
      ============================================================ */
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      {/* ====== HEADER ====== */}
-      <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md">
-        <div className="flex h-14 items-center justify-between px-4 md:px-6">
-          {/* Left: Logo + Title */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-green-500 flex items-center justify-center">
-                <ShoppingCart className="h-4.5 w-4.5 text-white" />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-bold leading-tight tracking-tight">
-                  Smart Shop
-                </span>
-                <span className="text-[10px] text-muted-foreground leading-none">
-                  Assistant Courses
-                </span>
-              </div>
-            </div>
-
-            {/* Plan Badge - desktop only */}
-            <Badge
-              variant={user.plan === "premium" ? "default" : "secondary"}
-              className="hidden sm:inline-flex text-[10px] px-2 py-0"
-            >
-              {user.plan === "free"
-                ? "Gratuit"
-                : user.plan === "premium"
-                  ? "Premium"
-                  : "Famille"}
-            </Badge>
-          </div>
-
-          {/* Right: Offline indicator + mobile menu toggle */}
-          <div className="flex items-center gap-3">
-            <OfflineIndicator
-              isOnline={isOnline}
-              pendingCount={pendingCount}
-              isSyncing={isSyncing}
-            />
-
-            {/* Mobile hamburger menu */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              aria-label={
-                mobileMenuOpen ? "Fermer le menu" : "Ouvrir le menu"
-              }
-              aria-expanded={mobileMenuOpen}
-            >
-              {mobileMenuOpen ? (
-                <X className="h-5 w-5" />
-              ) : (
-                <Menu className="h-5 w-5" />
-              )}
-            </Button>
-          </div>
-        </div>
-
-        {/* ====== DESKTOP TOP NAV ====== */}
-        <nav
-          className="hidden md:flex items-center gap-1 px-4 pb-2"
-          role="tablist"
-          aria-label="Navigation principale"
-        >
-          {NAV_TABS.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                role="tab"
-                aria-selected={isActive}
-                aria-controls={`panel-${tab.id}`}
-                onClick={() => handleTabChange(tab.id)}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2",
-                  isActive
-                    ? "bg-green-500/10 text-green-600 dark:text-green-400"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* ====== MOBILE DROPDOWN NAV ====== */}
-        <AnimatePresence>
-          {mobileMenuOpen && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="md:hidden overflow-hidden border-t"
-            >
-              <nav
-                className="flex flex-col p-2 gap-1"
-                role="tablist"
-                aria-label="Navigation mobile"
-              >
-                {NAV_TABS.map((tab) => {
-                  const Icon = tab.icon;
-                  const isActive = activeTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      role="tab"
-                      aria-selected={isActive}
-                      onClick={() => handleTabChange(tab.id)}
-                      className={cn(
-                        "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500",
-                        isActive
-                          ? "bg-green-500/10 text-green-600 dark:text-green-400"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                      )}
-                    >
-                      <Icon className="h-5 w-5" />
-                      {tab.label}
-                    </button>
-                  );
-                })}
-              </nav>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </header>
-
-      {/* ====== MAIN CONTENT ====== */}
-      <main className="flex-1 pb-20 md:pb-6">
-        <div className="max-w-6xl mx-auto px-4 md:px-6 py-4 md:py-6">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              variants={pageVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              transition={pageTransition}
-              role="tabpanel"
-              id={`panel-${activeTab}`}
-              aria-label={NAV_TABS.find((t) => t.id === activeTab)?.label}
-            >
-              {renderActiveTab(activeTab, user)}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </main>
-
-      {/* ====== MOBILE BOTTOM NAV BAR ====== */}
-      <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur-md"
-        role="tablist"
-        aria-label="Navigation inférieure"
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={effectiveView.type === "auth" ? `auth-${effectiveView.authView}` : effectiveView.type}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={viewVariants.transition}
       >
-        <div className="flex items-center justify-around h-16 px-2 safe-area-bottom">
-          {NAV_TABS.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                role="tab"
-                aria-selected={isActive}
-                aria-label={tab.label}
-                onClick={() => handleTabChange(tab.id)}
-                className={cn(
-                  "flex flex-col items-center justify-center gap-0.5 flex-1 py-1 rounded-lg transition-all duration-200 min-h-[44px]",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500",
-                  isActive
-                    ? "text-green-600 dark:text-green-400"
-                    : "text-muted-foreground active:text-foreground"
-                )}
-              >
-                <div className="relative">
-                  <Icon
-                    className={cn(
-                      "h-5 w-5 transition-transform duration-200",
-                      isActive && "scale-110"
-                    )}
-                  />
-                  {isActive && (
-                    <motion.div
-                      layoutId="activeTabDot"
-                      className="absolute -bottom-1 left-1/2 -translate-x-1/2 h-1 w-4 rounded-full bg-green-500"
-                      transition={{
-                        type: "spring",
-                        stiffness: 500,
-                        damping: 30,
-                      }}
-                    />
-                  )}
-                </div>
-                <span
-                  className={cn(
-                    "text-[10px] font-medium",
-                    isActive && "font-semibold"
-                  )}
-                >
-                  {tab.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
-    </div>
+        {effectiveView.type === "loading" && <SplashScreen />}
+
+        {effectiveView.type === "landing" && (
+          <LandingPage onNavigate={handleLandingNavigate} />
+        )}
+
+        {effectiveView.type === "auth" && (
+          <AuthViews
+            initialView={effectiveView.authView}
+            onNavigate={handleAuthNavigate}
+            onBack={handleAuthBack}
+            loginFn={login}
+            registerFn={register}
+          />
+        )}
+
+        {effectiveView.type === "app" && user && (
+          <SmartShopAppLazy
+            userId={user.id}
+            userName={user.name}
+            userEmail={user.email}
+            userPlan={user.plan}
+            onLogout={handleLogout}
+          />
+        )}
+      </motion.div>
+    </AnimatePresence>
   );
 }
 
 /* ============================================================
-   Tab Content Renderer
+   Loading Screens
    ============================================================ */
 
-function renderActiveTab(tab: AppTab, user: UserProfile) {
-  switch (tab) {
-    case "lists":
-      return <ShoppingListView userId={user.id} />;
-    case "scanner":
-      return <ScannerView userId={user.id} />;
-    case "cart":
-      return <CartView userId={user.id} />;
-    case "dashboard":
-      return (
-        <DashboardView
-          userId={user.id}
-          isPremium={user.plan !== "free"}
+function SplashScreen() {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-6">
+      {/* Logo */}
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="flex flex-col items-center gap-3"
+      >
+        <div className="h-14 w-14 rounded-2xl bg-green-500 flex items-center justify-center shadow-lg shadow-green-500/20">
+          <svg
+            className="h-7 w-7 text-white"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"
+            />
+          </svg>
+        </div>
+        <div className="text-center">
+          <h1 className="text-xl font-bold tracking-tight">Smart Shop</h1>
+          <p className="text-xs text-muted-foreground">
+            Assistant courses intelligent
+          </p>
+        </div>
+      </motion.div>
+
+      {/* Loading bar */}
+      <motion.div
+        initial={{ width: 0 }}
+        animate={{ width: "60%" }}
+        transition={{ duration: 1.5, ease: "easeInOut" }}
+        className="h-1 bg-green-500/30 rounded-full overflow-hidden"
+      >
+        <motion.div
+          animate={{ x: ["-100%", "200%"] }}
+          transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+          className="h-full w-1/2 bg-green-500 rounded-full"
         />
-      );
-    case "settings":
-      return (
-        <SettingsPanel
-          userId={user.id}
-          userName={user.name}
-          userEmail={user.email}
-        />
-      );
-    default:
-      return <ShoppingListView userId={user.id} />;
-  }
+      </motion.div>
+    </div>
+  );
 }
 
-/* ============================================================
-   Loading Screen
-   ============================================================ */
-
-function LoadingScreen() {
+function AppLoadingScreen() {
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-background">
       {/* Header skeleton */}
       <header className="sticky top-0 z-50 w-full border-b bg-background">
         <div className="flex h-14 items-center justify-between px-4">
@@ -389,11 +208,6 @@ function LoadingScreen() {
             </div>
           </div>
           <Skeleton className="h-6 w-24" />
-        </div>
-        <div className="hidden md:flex items-center gap-1 px-4 pb-2">
-          {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-9 w-24 rounded-lg" />
-          ))}
         </div>
       </header>
 
@@ -408,18 +222,6 @@ function LoadingScreen() {
           </div>
         </div>
       </main>
-
-      {/* Bottom nav skeleton */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-background h-16">
-        <div className="flex items-center justify-around h-full px-2">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="flex flex-col items-center gap-0.5">
-              <Skeleton className="h-5 w-5 rounded" />
-              <Skeleton className="h-2.5 w-10 rounded" />
-            </div>
-          ))}
-        </div>
-      </nav>
     </div>
   );
 }

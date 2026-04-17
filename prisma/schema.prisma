@@ -18,6 +18,7 @@ model User {
   id             String   @id @default(cuid())
   email          String   @unique
   name           String?
+  passwordHash   String?
   plan           String   @default("free") // "free" | "premium" | "family"
   budgetDefault  Float    @default(100)
   avatarUrl      String?
