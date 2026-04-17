@@ -157,19 +157,19 @@ export function useShoppingList(userId?: string) {
 
       setLists((prev) =>
         prev.map((l) =>
-          l.id === listId ? { ...l, items: toggleInItems(l.items) } : l
+          l.id === listId ? { ...l, items: toggleInItems(l.items ?? []) } : l
         )
       );
       setCurrentList((prev) =>
         prev?.id === listId
-          ? { ...prev, items: toggleInItems(prev.items) }
+          ? { ...prev, items: toggleInItems(prev.items ?? []) }
           : prev
       );
 
       try {
         const list = previousLists.find((l) => l.id === listId);
         if (!list) throw new Error("List not found");
-        const updatedItems = toggleInItems(list.items);
+        const updatedItems = toggleInItems(list.items ?? []);
         const res = await fetch(`/api/lists/${listId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -208,19 +208,19 @@ export function useShoppingList(userId?: string) {
 
       setLists((prev) =>
         prev.map((l) =>
-          l.id === listId ? { ...l, items: addToList(l.items) } : l
+          l.id === listId ? { ...l, items: addToList(l.items ?? []) } : l
         )
       );
       setCurrentList((prev) =>
         prev?.id === listId
-          ? { ...prev, items: addToList(prev.items) }
+          ? { ...prev, items: addToList(prev.items ?? []) }
           : prev
       );
 
       try {
         const list = previousLists.find((l) => l.id === listId);
         if (!list) throw new Error("List not found");
-        const updatedItems = addToList(list.items);
+        const updatedItems = addToList(list.items ?? []);
         const res = await fetch(`/api/lists/${listId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -261,20 +261,20 @@ export function useShoppingList(userId?: string) {
       setLists((prev) =>
         prev.map((l) =>
           l.id === listId
-            ? { ...l, items: removeFromItems(l.items) }
+            ? { ...l, items: removeFromItems(l.items ?? []) }
             : l
         )
       );
       setCurrentList((prev) =>
         prev?.id === listId
-          ? { ...prev, items: removeFromItems(prev.items) }
+          ? { ...prev, items: removeFromItems(prev.items ?? []) }
           : prev
       );
 
       try {
         const list = previousLists.find((l) => l.id === listId);
         if (!list) throw new Error("List not found");
-        const updatedItems = removeFromItems(list.items);
+        const updatedItems = removeFromItems(list.items ?? []);
         const res = await fetch(`/api/lists/${listId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },

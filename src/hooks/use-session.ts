@@ -204,6 +204,7 @@ export function useSession(userId?: string) {
         setActiveSession((prev) => (prev?.id === sessionId ? session : prev));
 
         // Also update the summary in sessions array
+        const scannedItems = session.scannedItems ?? [];
         setSessions((prev) =>
           prev.map((s) =>
             s.id === sessionId
@@ -211,7 +212,7 @@ export function useSession(userId?: string) {
                   ...s,
                   status: session.status,
                   total: session.totalSpent,
-                  itemsCount: session.scannedItems.length,
+                  itemsCount: scannedItems.length,
                 }
               : s
           )

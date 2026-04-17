@@ -110,7 +110,18 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ list }, { status: 201 });
+    // Parse itemsJson to items for the response
+    let parsedItems = [];
+    try {
+      parsedItems = JSON.parse(list.itemsJson);
+    } catch {
+      parsedItems = [];
+    }
+
+    return NextResponse.json(
+      { list: { ...list, items: parsedItems } },
+      { status: 201 }
+    );
   } catch (error) {
     console.error("[POST /api/lists] Error:", error);
     return NextResponse.json(

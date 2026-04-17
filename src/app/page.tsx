@@ -82,7 +82,9 @@ export default function SmartShopApp() {
       const res = await fetch("/api/user", { method: "POST" });
       if (!res.ok) throw new Error("Failed to create demo user");
       const data = await res.json();
-      setUser(data);
+      // API returns { user: {...} }, extract the nested user object
+      const userObj = data.user ?? data;
+      setUser(userObj);
     } catch (error) {
       console.error("Failed to initialize demo user:", error);
     } finally {

@@ -77,12 +77,14 @@ export function ShoppingListView({ userId }: ShoppingListViewProps) {
   // ── Helpers ──
 
   const getCheckedCount = (list: ShoppingList) =>
-    list.items.filter((i) => i.checked).length;
+    (list.items ?? []).filter((i) => i.checked).length;
 
-  const getProgress = (list: ShoppingList) =>
-    list.items.length > 0
-      ? Math.round((getCheckedCount(list) / list.items.length) * 100)
+  const getProgress = (list: ShoppingList) => {
+    const items = list.items ?? [];
+    return items.length > 0
+      ? Math.round((getCheckedCount(list) / items.length) * 100)
       : 0;
+  };
 
   // ── Create list ──
 
@@ -248,7 +250,7 @@ export function ShoppingListView({ userId }: ShoppingListViewProps) {
                       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
                         <ListChecks className="h-4 w-4" aria-hidden="true" />
                         <span>
-                          {checkedCount} / {list.items.length} article{list.items.length !== 1 ? 's' : ''}
+                          {checkedCount} / {(list.items ?? []).length} article{(list.items ?? []).length !== 1 ? 's' : ''}
                         </span>
                       </div>
                       <Progress value={progress} className="h-2" />
@@ -304,7 +306,7 @@ export function ShoppingListView({ userId }: ShoppingListViewProps) {
             )}
             <DialogDescription>
               {selectedList &&
-                `${getCheckedCount(selectedList)} / ${selectedList.items.length} articles cochés`}
+                `${getCheckedCount(selectedList)} / ${(selectedList.items ?? []).length} articles cochés`}
             </DialogDescription>
           </DialogHeader>
 
@@ -367,12 +369,12 @@ export function ShoppingListView({ userId }: ShoppingListViewProps) {
               <ScrollArea className="flex-1 -mx-6 px-6">
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   <AnimatePresence mode="popLayout">
-                    {selectedList.items.length === 0 ? (
+                    {(selectedList.items ?? []).length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-4">
                         Aucun article dans cette liste.
                       </p>
                     ) : (
-                      selectedList.items.map((item) => (
+                      (selectedList.items ?? []).map((item) => (
                         <motion.div
                           key={item.id}
                           layout
