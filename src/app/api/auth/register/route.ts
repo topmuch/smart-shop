@@ -5,7 +5,12 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { hashPassword, sessionCookie, generateSessionToken } from "@/lib/auth-utils";
+import {
+  hashPassword,
+  generateSessionToken,
+  buildSessionCookie,
+  SESSION_MAX_AGE,
+} from "@/lib/auth-utils";
 import { z } from "zod/v4";
 
 const registerSchema = z.object({
@@ -49,8 +54,16 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Create session token
+    // Create session token and store it in database
     const token = generateSessionToken();
+    const expiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000);
+    await db.authSession.create({
+      data: {
+        token,
+        userId: user.id,
+        expiresAt,
+      },
+    });
 
     return NextResponse.json(
       {
@@ -60,12 +73,14 @@ export async function POST(request: NextRequest) {
           name: user.name,
           plan: user.plan,
           budgetDefault: user.budgetDefault,
+          avatarUrl: user.avatarUrl,
+          createdAt: user.createdAt,
         },
       },
       {
         status: 201,
         headers: {
-          "Set-Cookie": `${sessionCookie.name}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${sessionCookie.maxAge}`,
+          "Set-Cookie": buildSessionCookie(token),
         },
       }
     );

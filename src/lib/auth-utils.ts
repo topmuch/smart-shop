@@ -1,12 +1,12 @@
 /**
  * Smart Shop - Auth Utilities
- * Session token generation and verification using crypto.
+ * Session token generation, password hashing, and cookie management.
  */
 
 import crypto from "crypto";
 
-const SESSION_COOKIE_NAME = "smartshop_session";
-const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+export const SESSION_COOKIE_NAME = "smartshop_session";
+export const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
 /** Generate a secure random session token */
 export function generateSessionToken(): string {
@@ -28,14 +28,33 @@ export async function comparePassword(
   return bcrypt.compare(password, hash);
 }
 
-/** Session cookie config */
-export const sessionCookie = {
-  name: SESSION_COOKIE_NAME,
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax" as const,
-  maxAge: SESSION_MAX_AGE,
-  path: "/",
-};
+/** Build a Set-Cookie header value with proper flags */
+export function buildSessionCookie(token: string, maxAge: number = SESSION_MAX_AGE): string {
+  const isProduction = process.env.NODE_ENV === "production";
+  const parts = [
+    `${SESSION_COOKIE_NAME}=${token}`,
+    "HttpOnly",
+    "SameSite=Lax",
+    "Path=/",
+    `Max-Age=${maxAge}`,
+  ];
+  if (isProduction) {
+    parts.push("Secure");
+  }
+  return parts.join("; ");
+}
 
-export { SESSION_COOKIE_NAME };
+/** Build a Set-Cookie header to clear the session */
+export function buildClearCookie(): string {
+  const parts = [
+    `${SESSION_COOKIE_NAME}=`,
+    "HttpOnly",
+    "SameSite=Lax",
+    "Path=/",
+    "Max-Age=0",
+  ];
+  if (process.env.NODE_ENV === "production") {
+    parts.push("Secure");
+  }
+  return parts.join("; ");
+}

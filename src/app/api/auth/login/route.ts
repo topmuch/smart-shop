@@ -7,8 +7,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import {
   comparePassword,
-  sessionCookie,
   generateSessionToken,
+  buildSessionCookie,
+  SESSION_MAX_AGE,
 } from "@/lib/auth-utils";
 import { z } from "zod/v4";
 
@@ -40,22 +41,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check password (allow demo users without passwordHash)
-    if (user.passwordHash) {
-      const isValid = await comparePassword(password, user.passwordHash);
-      if (!isValid) {
-        return NextResponse.json(
-          { error: "Email ou mot de passe incorrect" },
-          { status: 401 }
-        );
-      }
-    } else {
-      // Demo user without password - accept any password for demo mode
-      // In production, you'd want to migrate these users
+    // Require a password hash — no bypass for demo users
+    if (!user.passwordHash) {
+      return NextResponse.json(
+        { error: "Ce compte utilise l'authentification legacy. Veuillez réinitialiser votre mot de passe ou créer un nouveau compte." },
+        { status: 403 }
+      );
     }
 
-    // Create session token
+    // Verify password
+    const isValid = await comparePassword(password, user.passwordHash);
+    if (!isValid) {
+      return NextResponse.json(
+        { error: "Email ou mot de passe incorrect" },
+        { status: 401 }
+      );
+    }
+
+    // Create session token and store it in database
     const token = generateSessionToken();
+    const expiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000);
+    await db.authSession.create({
+      data: {
+        token,
+        userId: user.id,
+        expiresAt,
+      },
+    });
 
     return NextResponse.json(
       {
@@ -66,11 +78,12 @@ export async function POST(request: NextRequest) {
           plan: user.plan,
           budgetDefault: user.budgetDefault,
           avatarUrl: user.avatarUrl,
+          createdAt: user.createdAt,
         },
       },
       {
         headers: {
-          "Set-Cookie": `${sessionCookie.name}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${sessionCookie.maxAge}`,
+          "Set-Cookie": buildSessionCookie(token),
         },
       }
     );

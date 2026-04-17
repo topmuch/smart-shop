@@ -29,6 +29,22 @@ model User {
 
   shoppingLists    ShoppingList[]
   shoppingSessions ShoppingSession[]
+  authSessions     AuthSession[]
+}
+
+/** Auth Session - server-side session token storage */
+model AuthSession {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 /** Shopping List - user's planned items before going to store */

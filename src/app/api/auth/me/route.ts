@@ -1,8 +1,8 @@
 /**
  * Smart Shop - Me API (Get Current User)
  * GET /api/auth/me
- * Checks session cookie and returns the current user.
- * Uses a simple token-based session stored in a cookie + DB lookup.
+ * Reads session token from cookie, looks up the session in DB,
+ * returns the associated user.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -16,41 +16,41 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ user: null });
     }
 
-    const sessionMatch = cookieHeader.match(
+    const match = cookieHeader.match(
       new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`)
     );
-    if (!sessionMatch) {
+    if (!match) {
       return NextResponse.json({ user: null });
     }
 
-    const token = sessionMatch[1];
+    const token = match[1];
 
-    // Simple token-based auth: we store the token-to-user mapping via the user id
-    // For this MVP, we'll use a simplified approach:
-    // The token itself contains user info encoded in the first 32 chars as userId
-    // In production, you'd use a sessions table in the DB
-    // For now, we return the first user (demo mode) or look up by token
-    
-    // Actually, for MVP simplicity: session cookie presence = authenticated
-    // We'll look up the most recently created user with a passwordHash
-    // This is a simplified approach - production would use a sessions table
-    const user = await db.user.findFirst({
-      where: { passwordHash: { not: null } },
-      orderBy: { createdAt: "desc" },
+    // Look up session by token in DB
+    const session = await db.authSession.findUnique({
+      where: { token },
+      include: { user: true },
     });
 
-    if (!user) {
+    if (!session) {
+      return NextResponse.json({ user: null });
+    }
+
+    // Check if session is expired
+    if (session.expiresAt < new Date()) {
+      // Clean up expired session
+      await db.authSession.delete({ where: { id: session.id } });
       return NextResponse.json({ user: null });
     }
 
     return NextResponse.json({
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        plan: user.plan,
-        budgetDefault: user.budgetDefault,
-        avatarUrl: user.avatarUrl,
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.name,
+        plan: session.user.plan,
+        budgetDefault: session.user.budgetDefault,
+        avatarUrl: session.user.avatarUrl,
+        createdAt: session.user.createdAt,
       },
     });
   } catch (error) {
