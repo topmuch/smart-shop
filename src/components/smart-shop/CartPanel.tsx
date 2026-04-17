@@ -28,21 +28,13 @@ import { EmptyState } from './EmptyState';
 import { CATEGORY_COLORS } from '@/types';
 import type { ScannedItem } from '@/types';
 import { cn } from '@/lib/utils';
+import { formatCurrency, parseMoney } from '@/lib/safe-helpers';
 
 interface CartPanelProps {
   items: ScannedItem[];
   budgetLimit: number;
   onFinishSession: () => void;
   onRemoveItem?: (itemId: string) => void;
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
 }
 
 export function CartPanel({
@@ -52,12 +44,12 @@ export function CartPanel({
   onRemoveItem,
 }: CartPanelProps) {
   const totalSpent = useMemo(
-    () => items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    () => items.reduce((sum, item) => sum + parseMoney(item.price) * parseMoney(item.quantity), 0),
     [items]
   );
 
   const totalItems = useMemo(
-    () => items.reduce((sum, item) => sum + item.quantity, 0),
+    () => items.reduce((sum, item) => sum + parseMoney(item.quantity), 0),
     [items]
   );
 
@@ -84,7 +76,7 @@ export function CartPanel({
           <div className="space-y-2 max-h-80 overflow-y-auto">
             <AnimatePresence mode="popLayout">
               {items.map((item) => {
-                const subtotal = item.price * item.quantity;
+                const subtotal = parseMoney(item.price) * parseMoney(item.quantity);
                 const catColor = CATEGORY_COLORS[item.category] ?? '#a3a3a3';
                 return (
                   <motion.div

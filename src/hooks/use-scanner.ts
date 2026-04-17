@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import type { ScannedItem, ScanProductInput } from "@/types";
 import { enqueueAction } from "@/lib/offline-queue";
+import { soundManager } from "@/lib/sound-manager";
 
 /** Duration in ms before a barcode is removed from the duplicate-prevention set. */
 const DUPLICATE_WINDOW_MS = 3000;
@@ -107,6 +108,8 @@ export function useScanner() {
         const scannedItem = (json.item ?? json) as ScannedItem;
         setLastScan(scannedItem);
         triggerHaptic();
+        soundManager.playSuccess();
+        soundManager.vibrate(50);
         return scannedItem;
       } catch (err) {
         setError(

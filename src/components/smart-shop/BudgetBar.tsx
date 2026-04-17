@@ -5,28 +5,22 @@ import { motion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { AlertTriangle, AlertOctagon } from 'lucide-react';
+import { formatCurrency, parseMoney } from '@/lib/safe-helpers';
 
 interface BudgetBarProps {
   spent: number;
   limit: number;
 }
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
 export function BudgetBar({ spent, limit }: BudgetBarProps) {
   const percentage = useMemo(() => {
-    if (limit <= 0) return 0;
-    return Math.min((spent / limit) * 100, 100);
+    const s = parseMoney(spent);
+    const l = parseMoney(limit);
+    if (l <= 0) return 0;
+    return Math.min((s / l) * 100, 100);
   }, [spent, limit]);
 
-  const remaining = limit - spent;
+  const remaining = parseMoney(limit) - parseMoney(spent);
 
   const colorClass = useMemo(() => {
     if (percentage > 100) return 'bg-red-500';

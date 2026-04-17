@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { OfflineIndicator } from "@/components/smart-shop/OfflineIndicator";
 import { ShoppingListView } from "@/components/smart-shop/ShoppingListView";
 import { ScannerView } from "@/components/smart-shop/ScannerView";
+import { CartView } from "@/components/smart-shop/CartView";
 import { DashboardView } from "@/components/smart-shop/DashboardView";
 import { SettingsPanel } from "@/components/smart-shop/SettingsPanel";
 import { useOfflineSync } from "@/hooks/use-offline-sync";
@@ -349,8 +350,7 @@ function renderActiveTab(tab: AppTab, user: UserProfile) {
     case "scanner":
       return <ScannerView userId={user.id} />;
     case "cart":
-      // The cart is integrated within ScannerView; show scanner if no session active
-      return <ScannerView userId={user.id} />;
+      return <CartView userId={user.id} />;
     case "dashboard":
       return (
         <DashboardView

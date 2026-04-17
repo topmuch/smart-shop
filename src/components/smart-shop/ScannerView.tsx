@@ -28,6 +28,8 @@ import { useScanner } from '@/hooks/use-scanner';
 import { useOfflineSync } from '@/hooks/use-offline-sync';
 import type { ScanProductInput, ScannedItem } from '@/types';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { soundManager } from '@/lib/sound-manager';
 
 interface ScannerViewProps {
   userId: string;
@@ -77,6 +79,7 @@ export function ScannerView({ userId }: ScannerViewProps) {
 
   // ── Start session ──
   const handleStartSession = async () => {
+    soundManager.init(); // Unlock audio on user gesture
     const session = await createSession({ budgetLimit: 50 });
     if (session) {
       setScannerActive(true);
@@ -107,6 +110,43 @@ export function ScannerView({ userId }: ScannerViewProps) {
 
     if (scannedItem) {
       setLocalAddedItems((prev) => [...prev, scannedItem]);
+      toast.success(`${input.productName} ajouté : ${input.price.toFixed(2)} €`);
+    }
+
+    // Sync with shopping list: mark matching items as checked
+    try {
+      const listsRes = await fetch(`/api/lists?userId=${userId}`);
+      if (listsRes.ok) {
+        const { lists } = await listsRes.json();
+        const normalizedBarcode = input.barcode.trim();
+
+        for (const list of lists) {
+          const items = list.items ?? [];
+          const hasMatch = items.some(
+            (item: { barcode?: string; name: string }) =>
+              item.barcode === normalizedBarcode ||
+              item.name.toLowerCase() === input.productName.toLowerCase()
+          );
+          if (hasMatch) {
+            const updatedItems = items.map((item: Record<string, unknown>) => {
+              if (
+                (item.barcode as string) === normalizedBarcode ||
+                (item.name as string).toLowerCase() === input.productName.toLowerCase()
+              ) {
+                return { ...item, checked: true };
+              }
+              return item;
+            });
+            await fetch(`/api/lists/${list.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ items: updatedItems }),
+            });
+          }
+        }
+      }
+    } catch {
+      // Silent fail for list sync
     }
   };
 

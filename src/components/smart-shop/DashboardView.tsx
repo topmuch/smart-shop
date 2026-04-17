@@ -47,21 +47,13 @@ import { useDashboard } from '@/hooks/use-dashboard';
 import { CATEGORY_COLORS } from '@/types';
 import type { SessionSummary } from '@/types';
 import { cn } from '@/lib/utils';
+import { formatCurrency, formatSafeDateShort, parseMoney } from '@/lib/safe-helpers';
 
 interface DashboardViewProps {
   userId: string;
   isPremium?: boolean;
   onExportCSV?: () => void;
   onExportPDF?: () => void;
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
 }
 
 function StatCard({
@@ -138,7 +130,6 @@ export function DashboardView({
     sessionHistory,
     loading,
     error,
-    formatCurrency: fmtCurrency,
     completedSessionsCount,
     totalItemsScanned,
   } = useDashboard(userId);
@@ -146,7 +137,7 @@ export function DashboardView({
   const avgBudget = useMemo(() => {
     const completed = sessionHistory.filter((s) => s.status === 'completed');
     if (completed.length === 0) return 0;
-    const total = completed.reduce((sum, s) => sum + s.total, 0);
+    const total = completed.reduce((sum, s) => sum + parseMoney(s.total), 0);
     return total / completed.length;
   }, [sessionHistory]);
 
@@ -236,7 +227,7 @@ export function DashboardView({
             <StatCard
               icon={Wallet}
               label="Total ce mois"
-              value={fmtCurrency(currentMonthTotal)}
+              value={formatCurrency(currentMonthTotal)}
               colorClass="bg-green-100 dark:bg-green-950/30 text-green-600 dark:text-green-400"
             />
             <StatCard
@@ -255,7 +246,7 @@ export function DashboardView({
             <StatCard
               icon={TrendingUp}
               label="Budget moyen"
-              value={avgBudget > 0 ? fmtCurrency(avgBudget) : '—'}
+              value={avgBudget > 0 ? formatCurrency(avgBudget) : '—'}
               subtext="par session terminée"
               colorClass="bg-orange-100 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400"
             />
@@ -364,50 +355,82 @@ export function DashboardView({
               Aucune session enregistrée
             </div>
           ) : (
-            <ScrollArea className="max-h-72 overflow-y-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[120px]">Date</TableHead>
-                    <TableHead className="w-[100px]">Lieu</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-right">Articles</TableHead>
-                    <TableHead className="text-right">Statut</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sessionHistory.map((session) => (
-                    <TableRow key={session.id}>
-                      <TableCell className="text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                          {new Date(session.date).toLocaleDateString('fr-FR', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
+            <>
+              {/* Desktop table */}
+              <div className="hidden md:block">
+                <ScrollArea className="max-h-72 overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[120px]">Date</TableHead>
+                        <TableHead className="w-[100px]">Lieu</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead className="text-right">Articles</TableHead>
+                        <TableHead className="text-right">Statut</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sessionHistory.map((session) => (
+                        <TableRow key={session.id}>
+                          <TableCell className="text-xs">
+                            <div className="flex items-center gap-1.5">
+                              <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                              {formatSafeDateShort(session.date)}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <div className="flex items-center gap-1.5">
+                              <MapPin className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                              {session.location ?? '—'}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right text-sm font-medium">
+                            {formatCurrency(session.total)}
+                          </TableCell>
+                          <TableCell className="text-right text-sm">
+                            {session.itemsCount}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {getStatusBadge(session.status)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </div>
+
+              {/* Mobile card view */}
+              <div className="md:hidden space-y-3">
+                {sessionHistory.length === 0 ? (
+                  <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+                    Aucune session enregistrée
+                  </div>
+                ) : (
+                  sessionHistory.map((session) => (
+                    <div key={session.id} className="rounded-lg border p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                          {formatSafeDateShort(session.date)}
                         </div>
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                          {session.location ?? '—'}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right text-sm font-medium">
-                        {formatCurrency(session.total)}
-                      </TableCell>
-                      <TableCell className="text-right text-sm">
-                        {session.itemsCount}
-                      </TableCell>
-                      <TableCell className="text-right">
                         {getStatusBadge(session.status)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </ScrollArea>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                          {session.location ?? 'Non précisé'}
+                        </div>
+                        <span className="text-sm font-semibold">{formatCurrency(session.total)}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {session.itemsCount} article{session.itemsCount !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

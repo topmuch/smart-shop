@@ -22,7 +22,7 @@ import {
 import { lookupProduct } from '@/lib/product-database';
 import { CATEGORIES, CATEGORY_COLORS } from '@/types';
 import type { ScanProductInput } from '@/types';
-import { SearchCheck, Package } from 'lucide-react';
+import { SearchCheck, Package, AlertTriangle } from 'lucide-react';
 
 interface ScanResultDialogProps {
   barcode: string;
@@ -81,6 +81,16 @@ function ScanResultForm({
           <Package className="h-4 w-4 text-green-600 dark:text-green-400" aria-hidden="true" />
           <span className="text-sm text-green-700 dark:text-green-300">
             Produit identifié dans la base de données
+          </span>
+        </div>
+      )}
+
+      {/* Unknown product warning */}
+      {!product && (
+        <div className="flex items-center gap-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+          <span className="text-sm text-amber-700 dark:text-amber-300">
+            Produit non reconnu. Veuillez saisir le nom et le prix.
           </span>
         </div>
       )}

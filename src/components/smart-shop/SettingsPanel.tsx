@@ -14,6 +14,8 @@ import {
   Check,
   X,
   Shield,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -48,6 +50,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
+import { soundManager } from '@/lib/sound-manager';
 
 interface SettingsPanelProps {
   userId: string;
@@ -134,6 +137,22 @@ export function SettingsPanel({
   const { theme, setTheme } = useTheme();
   const [budget, setBudget] = useState(budgetDefault);
   const [editingBudget, setEditingBudget] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    if (typeof window !== 'undefined') {
+      soundManager.restoreFromStorage();
+      return soundManager.isEnabled;
+    }
+    return true;
+  });
+
+  const handleSoundToggle = (checked: boolean) => {
+    soundManager.isEnabled = checked;
+    setSoundEnabled(checked);
+    if (checked) {
+      soundManager.init();
+      soundManager.playSuccess(); // Preview sound
+    }
+  };
 
   const handleSaveBudget = () => {
     onUpdateBudget?.(budget);
@@ -316,6 +335,41 @@ export function SettingsPanel({
               checked={theme === 'dark'}
               onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
               aria-label="Basculer le mode sombre"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Sound */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Volume2 className="h-4 w-4" aria-hidden="true" />
+            Son &amp; vibrations
+          </CardTitle>
+          <CardDescription>
+            Configurer les retours sonores du scanner.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {soundEnabled ? (
+                <Volume2 className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <VolumeX className="h-4 w-4" aria-hidden="true" />
+              )}
+              <div>
+                <p className="text-sm font-medium">Bip du scanner</p>
+                <p className="text-xs text-muted-foreground">
+                  Son et vibration lors d'un scan réussi
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={soundEnabled}
+              onCheckedChange={handleSoundToggle}
+              aria-label="Activer/désactiver le son du scanner"
             />
           </div>
         </CardContent>
