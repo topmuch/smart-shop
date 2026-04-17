@@ -6,7 +6,9 @@ import {
   XCircle,
   ScanBarcode,
   Loader2,
+  ShoppingCart,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -54,6 +56,8 @@ export function ScannerView({ userId }: ScannerViewProps) {
   const [scanDialogOpen, setScanDialogOpen] = useState(false);
   const [currentBarcode, setCurrentBarcode] = useState('');
   const [localAddedItems, setLocalAddedItems] = useState<ScannedItem[]>([]);
+  const [flashVisible, setFlashVisible] = useState(false);
+  const [lastAddedProduct, setLastAddedProduct] = useState<string | null>(null);
 
   // Items = session items + locally added (optimistic) items not yet in session
   const items = useMemo(() => {
@@ -77,6 +81,14 @@ export function ScannerView({ userId }: ScannerViewProps) {
     }
   }, [lastScan, activeSession, refreshSession]);
 
+  // ── Flash feedback on successful scan ──
+  const triggerScanFlash = useCallback(() => {
+    setFlashVisible(true);
+    // Auto-hide after 300ms
+    const timer = setTimeout(() => setFlashVisible(false), 300);
+    return () => clearTimeout(timer);
+  }, []);
+
   // ── Start session ──
   const handleStartSession = async () => {
     soundManager.init(); // Unlock audio on user gesture
@@ -84,11 +96,13 @@ export function ScannerView({ userId }: ScannerViewProps) {
     if (session) {
       setScannerActive(true);
       setLocalAddedItems([]);
+      toast.success('Session démarrée ! Scannez vos articles.');
     }
   };
 
   // ── Resume session ──
   const handleResumeSession = () => {
+    soundManager.init(); // Unlock audio on user gesture
     setScannerActive(true);
   };
 
@@ -110,7 +124,12 @@ export function ScannerView({ userId }: ScannerViewProps) {
 
     if (scannedItem) {
       setLocalAddedItems((prev) => [...prev, scannedItem]);
+      setLastAddedProduct(input.productName);
+      triggerScanFlash();
       toast.success(`${input.productName} ajouté : ${input.price.toFixed(2)} €`);
+
+      // Clear product name display after 3s
+      setTimeout(() => setLastAddedProduct(null), 3000);
     }
 
     // Sync with shopping list: mark matching items as checked
@@ -121,14 +140,14 @@ export function ScannerView({ userId }: ScannerViewProps) {
         const normalizedBarcode = input.barcode.trim();
 
         for (const list of lists) {
-          const items = list.items ?? [];
-          const hasMatch = items.some(
+          const listItems = list.items ?? [];
+          const hasMatch = listItems.some(
             (item: { barcode?: string; name: string }) =>
               item.barcode === normalizedBarcode ||
               item.name.toLowerCase() === input.productName.toLowerCase()
           );
           if (hasMatch) {
-            const updatedItems = items.map((item: Record<string, unknown>) => {
+            const updatedItems = listItems.map((item: Record<string, unknown>) => {
               if (
                 (item.barcode as string) === normalizedBarcode ||
                 (item.name as string).toLowerCase() === input.productName.toLowerCase()
@@ -153,10 +172,12 @@ export function ScannerView({ userId }: ScannerViewProps) {
   // ── Finish session ──
   const handleFinishSession = async () => {
     if (!activeSession) return;
+    soundManager.playSuccess();
     await finishSession(activeSession.id);
     setScannerActive(false);
     setLocalAddedItems([]);
     setLastBarcode(null);
+    toast.success('Courses terminées ! Consultez le Dashboard pour le récapitulatif.');
   };
 
   // ── Abandon session ──
@@ -183,28 +204,76 @@ export function ScannerView({ userId }: ScannerViewProps) {
 
   // ── Render states ──
 
-  // No active session — show start/resume
+  // No active session — show start/resume with pulsing CTA
   if (!activeSession && !sessionLoading) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 gap-6">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100 dark:bg-green-950/30">
-            <ScanBarcode className="h-10 w-10 text-green-600 dark:text-green-400" />
+      <div className="flex flex-col items-center justify-center p-8 gap-8">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="relative">
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-green-100 dark:bg-green-950/30">
+              <ScanBarcode className="h-12 w-12 text-green-600 dark:text-green-400" />
+            </div>
+            {/* Pulse ring animation */}
+            <motion.div
+              className="absolute inset-0 rounded-full border-2 border-green-400 dark:border-green-500"
+              animate={{
+                scale: [1, 1.3, 1.5],
+                opacity: [0.6, 0.2, 0],
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: 'easeOut',
+              }}
+            />
+            <motion.div
+              className="absolute inset-0 rounded-full border-2 border-green-400 dark:border-green-500"
+              animate={{
+                scale: [1, 1.4, 1.6],
+                opacity: [0.4, 0.15, 0],
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: 'easeOut',
+                delay: 0.7,
+              }}
+            />
           </div>
-          <h2 className="text-xl font-bold">Prêt à scanner ?</h2>
-          <p className="text-sm text-muted-foreground max-w-sm">
-            Commencez une nouvelle session de courses pour scanner vos articles et suivre votre budget en temps réel.
-          </p>
+          <div>
+            <h2 className="text-xl font-bold">Prêt à scanner ?</h2>
+            <p className="text-sm text-muted-foreground max-w-sm mt-2">
+              Commencez une nouvelle session de courses pour scanner vos articles
+              et suivre votre budget en temps réel.
+            </p>
+          </div>
         </div>
-        <Button
-          size="lg"
-          className="gap-2 bg-green-600 hover:bg-green-700 text-white"
-          onClick={handleStartSession}
-          aria-label="Démarrer une nouvelle session de courses"
+
+        {/* Pulsing CTA button */}
+        <motion.div
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
         >
-          <Play className="h-5 w-5" aria-hidden="true" />
-          Nouvelle session
-        </Button>
+          <Button
+            size="lg"
+            className="gap-2 bg-green-600 hover:bg-green-700 text-white text-base px-8 py-6 shadow-lg shadow-green-500/25"
+            onClick={handleStartSession}
+            aria-label="Démarrer une nouvelle session de courses"
+          >
+            <motion.div
+              animate={{ scale: [1, 1.1, 1] }}
+              transition={{
+                duration: 1.5,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+            >
+              <Play className="h-5 w-5" aria-hidden="true" />
+            </motion.div>
+            Nouvelle session
+          </Button>
+        </motion.div>
+
         <OfflineIndicator isOnline={isOnline} pendingCount={pendingCount} isSyncing={isSyncing} />
       </div>
     );
@@ -222,7 +291,21 @@ export function ScannerView({ userId }: ScannerViewProps) {
 
   // Active session — show scanner + cart
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+    <div className="flex flex-col gap-4 lg:flex-row lg:gap-6 relative">
+      {/* Scan flash overlay */}
+      <AnimatePresence>
+        {flashVisible && (
+          <motion.div
+            initial={{ opacity: 0.4 }}
+            animate={{ opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="absolute inset-0 z-50 pointer-events-none rounded-lg bg-green-500"
+            aria-hidden="true"
+          />
+        )}
+      </AnimatePresence>
+
       {/* Offline indicator */}
       <div className="lg:hidden">
         <OfflineIndicator isOnline={isOnline} pendingCount={pendingCount} isSyncing={isSyncing} />
@@ -237,6 +320,22 @@ export function ScannerView({ userId }: ScannerViewProps) {
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold">Session de courses</h2>
+
+            {/* Last added product toast */}
+            <AnimatePresence>
+              {lastAddedProduct && (
+                <motion.span
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 10 }}
+                  className="text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1"
+                >
+                  <ShoppingCart className="h-3 w-3" aria-hidden="true" />
+                  {lastAddedProduct}
+                </motion.span>
+              )}
+            </AnimatePresence>
+
             {!scannerActive && activeSession && (
               <Button
                 size="sm"

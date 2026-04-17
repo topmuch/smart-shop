@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { AlertTriangle, AlertOctagon } from 'lucide-react';
-import { formatCurrency, parseMoney } from '@/lib/safe-helpers';
+import { formatCurrency, parseMoney, safePercentage } from '@/lib/safe-helpers';
 
 interface BudgetBarProps {
   spent: number;
@@ -13,14 +13,17 @@ interface BudgetBarProps {
 }
 
 export function BudgetBar({ spent, limit }: BudgetBarProps) {
+  const safeSpent = parseMoney(spent);
+  const safeLimit = parseMoney(limit);
   const percentage = useMemo(() => {
-    const s = parseMoney(spent);
-    const l = parseMoney(limit);
-    if (l <= 0) return 0;
-    return Math.min((s / l) * 100, 100);
-  }, [spent, limit]);
+    if (safeLimit <= 0) return 0;
+    return (safeSpent / safeLimit) * 100;
+  }, [safeSpent, safeLimit]);
 
-  const remaining = parseMoney(limit) - parseMoney(spent);
+  const clampedPercentage = Math.min(percentage, 100);
+  const remaining = safeLimit - safeSpent;
+  const isWarning = percentage >= 80 && percentage < 100;
+  const isCritical = percentage >= 100;
 
   const colorClass = useMemo(() => {
     if (percentage > 100) return 'bg-red-500';
@@ -40,8 +43,8 @@ export function BudgetBar({ spent, limit }: BudgetBarProps) {
       {/* Text info */}
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">
-          <span className="text-base font-bold">{formatCurrency(spent)}</span>
-          <span className="text-muted-foreground"> / {formatCurrency(limit)}</span>
+          <span className="text-base font-bold">{formatCurrency(safeSpent)}</span>
+          <span className="text-muted-foreground"> / {formatCurrency(safeLimit)}</span>
         </span>
         <span
           className={cn(
@@ -67,24 +70,72 @@ export function BudgetBar({ spent, limit }: BudgetBarProps) {
         <motion.div
           className={cn('h-full rounded-full', colorClass)}
           initial={{ width: 0 }}
-          animate={{ width: `${Math.min(percentage, 100)}%` }}
+          animate={{ width: `${clampedPercentage}%` }}
           transition={{ duration: 0.6, ease: 'easeOut' }}
         />
+
+        {/* Warning pulse glow overlay */}
+        {isWarning && (
+          <motion.div
+            className="absolute top-0 right-0 h-full rounded-full bg-orange-500"
+            animate={{
+              width: [`${clampedPercentage}%`, `${clampedPercentage + 2}%`, `${clampedPercentage}%`],
+              opacity: [0.4, 0.8, 0.4],
+            }}
+            transition={{
+              duration: 1.5,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+        )}
+
+        {/* Critical pulse glow overlay */}
+        {isCritical && (
+          <motion.div
+            className="absolute inset-0 rounded-full bg-red-500"
+            animate={{
+              opacity: [0.15, 0.4, 0.15],
+            }}
+            transition={{
+              duration: 0.8,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+        )}
       </div>
 
       {/* Warning / Critical badges */}
       <div className="flex flex-wrap gap-2 min-h-[1.5rem]">
-        {percentage >= 80 && percentage < 100 && (
-          <Badge variant={badgeVariant} className="gap-1 text-xs border-amber-500 text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-            Attention : 80 % du budget
-          </Badge>
+        {isWarning && (
+          <motion.div
+            animate={{ scale: [1, 1.02, 1] }}
+            transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <Badge variant={badgeVariant} className="gap-1 text-xs border-amber-500 text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+              Attention : {Math.round(percentage)} % du budget
+            </Badge>
+          </motion.div>
         )}
-        {percentage >= 100 && (
-          <Badge variant={badgeVariant} className="gap-1 text-xs">
-            <AlertOctagon className="h-3 w-3" aria-hidden="true" />
-            Budget dépassé !
-          </Badge>
+        {isCritical && (
+          <motion.div
+            animate={{ scale: [1, 1.03, 1] }}
+            transition={{ duration: 0.8, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <Badge variant={badgeVariant} className="gap-1 text-xs">
+              <AlertOctagon className="h-3 w-3" aria-hidden="true" />
+              Budget dépassé !
+            </Badge>
+          </motion.div>
+        )}
+
+        {/* Safe state - show percentage */}
+        {!isWarning && !isCritical && safeLimit > 0 && (
+          <span className="text-xs text-muted-foreground">
+            {Math.round(percentage)} % utilisé
+          </span>
         )}
       </div>
     </div>

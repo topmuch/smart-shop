@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShoppingCart,
@@ -9,6 +9,8 @@ import {
   Loader2,
   ScanBarcode,
   Trash2,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,12 +31,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useSession } from '@/hooks/use-session';
 import { BudgetBar } from './BudgetBar';
 import { EmptyState } from './EmptyState';
-import { CATEGORY_COLORS } from '@/types';
+import { CATEGORY_COLORS, CATEGORIES } from '@/types';
 import { formatCurrency, parseMoney } from '@/lib/safe-helpers';
 import { cn } from '@/lib/utils';
+import type { ScannedItem } from '@/types';
 
 interface CartViewProps {
   userId: string;
+}
+
+/** Group items by category for organized display */
+interface CategoryGroup {
+  category: string;
+  items: ScannedItem[];
+  total: number;
+  color: string;
 }
 
 export function CartView({ userId }: CartViewProps) {
@@ -48,6 +59,8 @@ export function CartView({ userId }: CartViewProps) {
     refreshSession,
   } = useSession(userId);
 
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+
   // Fetch active session on mount
   useEffect(() => {
     if (userId) {
@@ -58,6 +71,40 @@ export function CartView({ userId }: CartViewProps) {
   const items = useMemo(() => {
     return activeSession?.scannedItems ?? [];
   }, [activeSession?.scannedItems]);
+
+  // Group items by category
+  const categoryGroups = useMemo((): CategoryGroup[] => {
+    const groups = new Map<string, ScannedItem[]>();
+
+    for (const item of items) {
+      const cat = item.category || 'Autre';
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat)!.push(item);
+    }
+
+    // Sort categories by CATEGORIES order, then by total descending
+    const result: CategoryGroup[] = [];
+    for (const [category, catItems] of groups) {
+      const total = catItems.reduce((sum, item) => sum + parseMoney(item.price) * parseMoney(item.quantity), 0);
+      result.push({
+        category,
+        items: catItems,
+        total,
+        color: CATEGORY_COLORS[category] ?? '#a3a3a3',
+      });
+    }
+
+    result.sort((a, b) => {
+      const orderA = CATEGORIES.indexOf(a.category as typeof CATEGORIES[number]);
+      const orderB = CATEGORIES.indexOf(b.category as typeof CATEGORIES[number]);
+      if (orderA !== -1 && orderB !== -1) return orderA - orderB;
+      if (orderA !== -1) return -1;
+      if (orderB !== -1) return 1;
+      return b.total - a.total;
+    });
+
+    return result;
+  }, [items]);
 
   const totalSpent = useMemo(
     () =>
@@ -74,6 +121,18 @@ export function CartView({ userId }: CartViewProps) {
   );
 
   const budgetLimit = parseMoney(activeSession?.budgetLimit);
+
+  const toggleCategory = (category: string) => {
+    setCollapsedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  };
 
   // ── Finish session ──
   const handleFinishSession = async () => {
@@ -148,7 +207,7 @@ export function CartView({ userId }: CartViewProps) {
             Mon Panier
           </h2>
           <p className="text-sm text-muted-foreground">
-            Session de courses en cours
+            Session de courses en cours — {categoryGroups.length} catégorie{categoryGroups.length !== 1 ? 's' : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -173,7 +232,7 @@ export function CartView({ userId }: CartViewProps) {
         </CardContent>
       </Card>
 
-      {/* Cart items */}
+      {/* Cart items grouped by category */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium">
@@ -190,72 +249,112 @@ export function CartView({ userId }: CartViewProps) {
               />
             </div>
           ) : (
-            <ScrollArea className="max-h-[400px] overflow-y-auto">
-              <div className="space-y-2">
+            <ScrollArea className="max-h-[500px] overflow-y-auto">
+              <div className="space-y-4">
                 <AnimatePresence mode="popLayout">
-                  {items.map((item, index) => {
-                    const subtotal =
-                      parseMoney(item.price) * parseMoney(item.quantity);
-                    const catColor =
-                      CATEGORY_COLORS[item.category] ?? '#a3a3a3';
+                  {categoryGroups.map((group) => {
+                    const isCollapsed = collapsedCategories.has(group.category);
                     return (
                       <motion.div
-                        key={item.id}
+                        key={group.category}
                         layout
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, x: 20 }}
+                        exit={{ opacity: 0, x: -20 }}
                         transition={{ duration: 0.2 }}
-                        className="flex items-center gap-3 rounded-lg border p-3"
+                        className="rounded-lg border"
                       >
-                        {/* Scan order number */}
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
-                          {index + 1}
-                        </div>
-
-                        {/* Product info */}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {item.productName}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] shrink-0"
-                              style={{
-                                borderColor: catColor,
-                                color: catColor,
-                              }}
-                            >
-                              {item.category}
-                            </Badge>
-                            <span className="text-[11px] text-muted-foreground font-mono">
-                              {item.barcode}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Qty & price */}
-                        <div className="text-right shrink-0">
-                          <p className="text-sm font-semibold">
-                            {formatCurrency(subtotal)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatCurrency(item.price)} ×{' '}
-                            {parseMoney(item.quantity)}
-                          </p>
-                        </div>
-
-                        {/* Delete */}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive shrink-0"
-                          onClick={() => handleRemoveItem(item.id)}
-                          aria-label={`Supprimer "${item.productName}" du panier`}
+                        {/* Category header */}
+                        <button
+                          onClick={() => toggleCategory(group.category)}
+                          className="w-full flex items-center justify-between p-3 text-left hover:bg-muted/50 transition-colors rounded-t-lg"
+                          aria-expanded={!isCollapsed}
+                          aria-label={`${group.category} — ${group.items.length} article${group.items.length !== 1 ? 's' : ''}, ${formatCurrency(group.total)}`}
                         >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="h-3 w-3 rounded-full shrink-0"
+                              style={{ backgroundColor: group.color }}
+                              aria-hidden="true"
+                            />
+                            <span className="text-sm font-semibold">{group.category}</span>
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                              {group.items.length}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold">{formatCurrency(group.total)}</span>
+                            <motion.div
+                              animate={{ rotate: isCollapsed ? 0 : 90 }}
+                              transition={{ duration: 0.2 }}
+                            >
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            </motion.div>
+                          </div>
+                        </button>
+
+                        {/* Category items */}
+                        <AnimatePresence mode="wait">
+                          {!isCollapsed && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.25 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="border-t">
+                                {group.items.map((item) => {
+                                  const subtotal = parseMoney(item.price) * parseMoney(item.quantity);
+                                  return (
+                                    <motion.div
+                                      key={item.id}
+                                      layout
+                                      initial={{ opacity: 0, x: -10 }}
+                                      animate={{ opacity: 1, x: 0 }}
+                                      exit={{ opacity: 0, x: 20 }}
+                                      transition={{ duration: 0.15 }}
+                                      className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/30 transition-colors"
+                                    >
+                                      {/* Product info */}
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">
+                                          {item.productName}
+                                        </p>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                          <span className="text-[11px] text-muted-foreground font-mono">
+                                            {item.barcode}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {/* Qty & price */}
+                                      <div className="text-right shrink-0">
+                                        <p className="text-sm font-semibold">
+                                          {formatCurrency(subtotal)}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                          {formatCurrency(item.price)} × {parseMoney(item.quantity)}
+                                        </p>
+                                      </div>
+
+                                      {/* Delete */}
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                                        onClick={() => handleRemoveItem(item.id)}
+                                        aria-label={`Supprimer "${item.productName}" du panier`}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </motion.div>
+                                  );
+                                })}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </motion.div>
                     );
                   })}
@@ -265,6 +364,28 @@ export function CartView({ userId }: CartViewProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Category summary strip */}
+      {categoryGroups.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {categoryGroups.map((group) => (
+            <Badge
+              key={group.category}
+              variant="outline"
+              className="text-xs gap-1.5"
+              style={{ borderColor: group.color, color: group.color }}
+            >
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: group.color }}
+                aria-hidden="true"
+              />
+              {group.category}
+              <span className="font-semibold">{formatCurrency(group.total)}</span>
+            </Badge>
+          ))}
+        </div>
+      )}
 
       {/* Total + Actions */}
       <Card>

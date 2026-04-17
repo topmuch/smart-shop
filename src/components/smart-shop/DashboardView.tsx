@@ -12,9 +12,12 @@ import {
   AreaChart,
   Area,
   Cell,
+  LineChart,
+  Line,
 } from 'recharts';
 import {
   TrendingUp,
+  TrendingDown,
   ShoppingCart,
   ScanBarcode,
   Wallet,
@@ -23,6 +26,8 @@ import {
   Crown,
   CalendarDays,
   MapPin,
+  BarChart3,
+  PieChart as PieIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -47,7 +52,8 @@ import { useDashboard } from '@/hooks/use-dashboard';
 import { CATEGORY_COLORS } from '@/types';
 import type { SessionSummary } from '@/types';
 import { cn } from '@/lib/utils';
-import { formatCurrency, formatSafeDateShort, parseMoney } from '@/lib/safe-helpers';
+import { formatCurrency, formatSafeDateShort, parseMoney, safePercentage } from '@/lib/safe-helpers';
+import { motion } from 'framer-motion';
 
 interface DashboardViewProps {
   userId: string;
@@ -62,12 +68,14 @@ function StatCard({
   value,
   subtext,
   colorClass,
+  trend,
 }: {
   icon: React.ElementType;
   label: string;
   value: string;
   subtext?: string;
   colorClass?: string;
+  trend?: { value: number; label: string };
 }) {
   return (
     <Card>
@@ -78,6 +86,22 @@ function StatCard({
             <p className="text-2xl font-bold">{value}</p>
             {subtext && (
               <p className="text-xs text-muted-foreground">{subtext}</p>
+            )}
+            {trend && (
+              <div className="flex items-center gap-1 mt-1">
+                {trend.value >= 0 ? (
+                  <TrendingUp className="h-3 w-3 text-red-500" aria-hidden="true" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 text-green-500" aria-hidden="true" />
+                )}
+                <span className={cn(
+                  'text-xs font-medium',
+                  trend.value >= 0 ? 'text-red-500' : 'text-green-500'
+                )}>
+                  {trend.value >= 0 ? '+' : ''}{trend.value.toFixed(1)} %
+                </span>
+                <span className="text-xs text-muted-foreground">{trend.label}</span>
+              </div>
             )}
           </div>
           <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg', colorClass ?? 'bg-muted')}>
@@ -127,11 +151,13 @@ export function DashboardView({
     categorySpending,
     monthlyTrend,
     currentMonthTotal,
+    previousMonthTotal,
     sessionHistory,
     loading,
     error,
     completedSessionsCount,
     totalItemsScanned,
+    monthOverMonthChange,
   } = useDashboard(userId);
 
   const avgBudget = useMemo(() => {
@@ -140,6 +166,8 @@ export function DashboardView({
     const total = completed.reduce((sum, s) => sum + parseMoney(s.total), 0);
     return total / completed.length;
   }, [sessionHistory]);
+
+  const momChange = monthOverMonthChange();
 
   const chartData = useMemo(
     () =>
@@ -229,6 +257,11 @@ export function DashboardView({
               label="Total ce mois"
               value={formatCurrency(currentMonthTotal)}
               colorClass="bg-green-100 dark:bg-green-950/30 text-green-600 dark:text-green-400"
+              trend={
+                previousMonthTotal > 0
+                  ? { value: momChange, label: 'vs mois dernier' }
+                  : undefined
+              }
             />
             <StatCard
               icon={ShoppingCart}
@@ -259,16 +292,36 @@ export function DashboardView({
         {/* Category spending bar chart */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Dépenses par catégorie</CardTitle>
-            <CardDescription>Répartition de vos achats</CardDescription>
+            <div className="flex items-center gap-2">
+              <PieIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <CardTitle className="text-base">Dépenses par catégorie</CardTitle>
+            </div>
+            <CardDescription>Répartition de vos achats ce mois</CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
             {loading ? (
-              <Skeleton className="h-64 w-full" />
-            ) : chartData.length === 0 ? (
-              <div className="flex items-center justify-center h-64 text-sm text-muted-foreground">
-                Aucune donnée disponible
+              <div className="space-y-3">
+                <Skeleton className="h-4 w-32" />
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-6 w-full" />
+                ))}
               </div>
+            ) : chartData.length === 0 ? (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col items-center justify-center h-64 text-center"
+              >
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-3">
+                  <PieIcon className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
+                </div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Aucune donnée de catégorie
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Les catégories apparaîtront ici après votre première session de courses terminée.
+                </p>
+              </motion.div>
             ) : (
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart
@@ -299,38 +352,53 @@ export function DashboardView({
           </CardContent>
         </Card>
 
-        {/* Monthly trend area chart */}
+        {/* Monthly trend line chart */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Tendance mensuelle</CardTitle>
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <CardTitle className="text-base">Tendance mensuelle</CardTitle>
+            </div>
             <CardDescription>Évolution de vos dépenses sur 6 mois</CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
             {loading ? (
               <Skeleton className="h-64 w-full" />
             ) : trendData.length === 0 ? (
-              <div className="flex items-center justify-center h-64 text-sm text-muted-foreground">
-                Aucune donnée disponible
-              </div>
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col items-center justify-center h-64 text-center"
+              >
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-3">
+                  <BarChart3 className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
+                </div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Aucune tendance mensuelle
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Complétez des sessions de courses pour voir votre évolution de dépenses.
+                </p>
+              </motion.div>
             ) : (
               <ResponsiveContainer width="100%" height={260}>
-                <AreaChart data={trendData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
+                <LineChart data={trendData} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v} €`} />
                   <Tooltip
                     formatter={(value: number) => [`${value.toFixed(2)} €`, 'Total']}
                     contentStyle={{ borderRadius: 8, fontSize: 12 }}
                   />
-                  <Area
+                  <Line
                     type="monotone"
                     dataKey="total"
-                    stroke="#22c55e"
-                    fill="#22c55e"
-                    fillOpacity={0.15}
-                    strokeWidth={2}
+                    stroke="#10B981"
+                    strokeWidth={2.5}
+                    dot={{ fill: '#10B981', r: 4, strokeWidth: 2, stroke: 'white' }}
+                    activeDot={{ r: 6, strokeWidth: 2 }}
                   />
-                </AreaChart>
+                </LineChart>
               </ResponsiveContainer>
             )}
           </CardContent>
@@ -351,9 +419,21 @@ export function DashboardView({
               ))}
             </div>
           ) : sessionHistory.length === 0 ? (
-            <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-              Aucune session enregistrée
-            </div>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col items-center justify-center py-12 text-center"
+            >
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted mb-3">
+                <CalendarDays className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">
+                Aucune session enregistrée
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Votre historique de courses apparaîtra ici après avoir terminé une session.
+              </p>
+            </motion.div>
           ) : (
             <>
               {/* Desktop table */}
@@ -402,33 +482,33 @@ export function DashboardView({
 
               {/* Mobile card view */}
               <div className="md:hidden space-y-3">
-                {sessionHistory.length === 0 ? (
-                  <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-                    Aucune session enregistrée
-                  </div>
-                ) : (
-                  sessionHistory.map((session) => (
-                    <div key={session.id} className="rounded-lg border p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
-                          {formatSafeDateShort(session.date)}
-                        </div>
-                        {getStatusBadge(session.status)}
+                {sessionHistory.map((session) => (
+                  <motion.div
+                    key={session.id}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="rounded-lg border p-3 space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                        {formatSafeDateShort(session.date)}
                       </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                          {session.location ?? 'Non précisé'}
-                        </div>
-                        <span className="text-sm font-semibold">{formatCurrency(session.total)}</span>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {session.itemsCount} article{session.itemsCount !== 1 ? 's' : ''}
-                      </div>
+                      {getStatusBadge(session.status)}
                     </div>
-                  ))
-                )}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                        {session.location ?? 'Non précisé'}
+                      </div>
+                      <span className="text-sm font-semibold">{formatCurrency(session.total)}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {session.itemsCount} article{session.itemsCount !== 1 ? 's' : ''}
+                    </div>
+                  </motion.div>
+                ))}
               </div>
             </>
           )}
