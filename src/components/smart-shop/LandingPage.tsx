@@ -497,6 +497,12 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
               <span>Mentions légales</span>
               <span>Confidentialité</span>
               <span>CGU</span>
+              <span
+                className="cursor-pointer hover:text-foreground transition-colors"
+                onClick={() => { window.location.hash = "#/admin"; }}
+              >
+                Admin
+              </span>
             </div>
           </div>
         </div>

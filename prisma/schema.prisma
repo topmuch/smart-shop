@@ -114,3 +114,64 @@ model Receipt {
 
   @@index([sessionId])
 }
+
+/** Admin User - back-office access */
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("admin") // "superadmin" | "admin" | "support"
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+/** Product Database - barcode → product info */
+model Product {
+  id          String   @id @default(cuid())
+  barcode     String   @unique
+  name        String
+  price       Float
+  category    String   @default("Autre")
+  imageUrl    String?
+  brand       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/** Promo Code - discount codes for subscriptions */
+model PromoCode {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  discount    Float    @default(0)     // percentage (0-100)
+  plan        String   @default("premium") // target plan
+  maxUses     Int      @default(-1)    // -1 = unlimited
+  usedCount   Int      @default(0)
+  isActive    Boolean  @default(true)
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+}
+
+/** App Configuration - system-wide settings */
+model AppConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+/** App Log - error/action logging */
+model AppLog {
+  id        String   @id @default(cuid())
+  level     String   @default("info") // "info" | "warn" | "error"
+  message   String
+  context   String?  // JSON string with extra context
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([level])
+  @@index([createdAt])
+}

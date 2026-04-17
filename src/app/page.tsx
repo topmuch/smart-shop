@@ -6,6 +6,7 @@
  * - Landing Page (unauthenticated visitors)
  * - Auth Views (login, register, forgot-password)
  * - App (authenticated users — full Smart Shop experience)
+ * - Admin Dashboard (back-office, accessed via /admin URL hash)
  */
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -28,7 +29,8 @@ type EffectiveView =
   | { type: "loading" }
   | { type: "landing" }
   | { type: "auth"; authView: AuthView }
-  | { type: "app" };
+  | { type: "app" }
+  | { type: "admin" };
 
 /* ============================================================
    Page Transition Variants
@@ -42,7 +44,7 @@ const viewVariants = {
 };
 
 /* ============================================================
-   SmartShopApp Lazy Component
+   Lazy-loaded Components
    ============================================================ */
 
 const SmartShopAppLazy = dynamic(
@@ -56,12 +58,24 @@ const SmartShopAppLazy = dynamic(
   }
 );
 
+const AdminDashboardLazy = dynamic(
+  () =>
+    import("@/components/admin/AdminDashboard").then(
+      (mod) => mod.AdminDashboard
+    ),
+  {
+    loading: () => <AdminLoadingScreen />,
+    ssr: false,
+  }
+);
+
 /* ============================================================
    Main Page Component
    ============================================================ */
 
 export default function SmartShopPage() {
   const [unauthView, setUnauthView] = useState<UnauthView>({ type: "landing" });
+  const [showAdmin, setShowAdmin] = useState(false);
   const { user, isLoading, isAuthenticated, checkSession, login, register, logout } =
     useAuthStore();
 
@@ -70,14 +84,27 @@ export default function SmartShopPage() {
     checkSession();
   }, [checkSession]);
 
+  /* --- Listen for hash changes to detect /admin navigation --- */
+  useEffect(() => {
+    const handleHash = () => {
+      if (window.location.hash === "#/admin") {
+        setShowAdmin(true);
+      }
+    };
+    handleHash();
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
+
   /* --- Derive effective view from auth state (no setState in effect) --- */
   const effectiveView: EffectiveView = useMemo(() => {
     if (isLoading) return { type: "loading" };
+    if (showAdmin) return { type: "admin" };
     if (isAuthenticated && user) return { type: "app" };
     return unauthView;
-  }, [isLoading, isAuthenticated, user, unauthView]);
+  }, [isLoading, isAuthenticated, user, unauthView, showAdmin]);
 
-  /* --- Navigation handlers (only for unauthenticated state) --- */
+  /* --- Navigation handlers --- */
   const handleLandingNavigate = useCallback(
     (authView: "login" | "register") => {
       setUnauthView({ type: "auth", authView });
@@ -98,13 +125,22 @@ export default function SmartShopPage() {
     setUnauthView({ type: "landing" });
   }, [logout]);
 
+  const handleAdminLogout = useCallback(() => {
+    setShowAdmin(false);
+    window.location.hash = "";
+  }, []);
+
   /* ============================================================
      Render
      ============================================================ */
   return (
     <AnimatePresence mode="wait">
       <motion.div
-        key={effectiveView.type === "auth" ? `auth-${effectiveView.authView}` : effectiveView.type}
+        key={
+          effectiveView.type === "auth"
+            ? `auth-${effectiveView.authView}`
+            : effectiveView.type
+        }
         initial="initial"
         animate="animate"
         exit="exit"
@@ -135,6 +171,10 @@ export default function SmartShopPage() {
             onLogout={handleLogout}
           />
         )}
+
+        {effectiveView.type === "admin" && (
+          <AdminDashboardLazy onLogout={handleAdminLogout} />
+        )}
       </motion.div>
     </AnimatePresence>
   );
@@ -147,7 +187,6 @@ export default function SmartShopPage() {
 function SplashScreen() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-6">
-      {/* Logo */}
       <motion.div
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -176,8 +215,6 @@ function SplashScreen() {
           </p>
         </div>
       </motion.div>
-
-      {/* Loading bar */}
       <motion.div
         initial={{ width: 0 }}
         animate={{ width: "60%" }}
@@ -197,7 +234,6 @@ function SplashScreen() {
 function AppLoadingScreen() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      {/* Header skeleton */}
       <header className="sticky top-0 z-50 w-full border-b bg-background">
         <div className="flex h-14 items-center justify-between px-4">
           <div className="flex items-center gap-3">
@@ -210,8 +246,6 @@ function AppLoadingScreen() {
           <Skeleton className="h-6 w-24" />
         </div>
       </header>
-
-      {/* Content skeleton */}
       <main className="flex-1 p-4 max-w-6xl mx-auto w-full">
         <div className="space-y-4">
           <Skeleton className="h-8 w-48" />
@@ -222,6 +256,18 @@ function AppLoadingScreen() {
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+function AdminLoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="text-center space-y-3">
+        <div className="h-10 w-10 rounded-xl bg-slate-900 animate-pulse mx-auto" />
+        <Skeleton className="h-5 w-32 mx-auto" />
+        <Skeleton className="h-4 w-24 mx-auto" />
+      </div>
     </div>
   );
 }
