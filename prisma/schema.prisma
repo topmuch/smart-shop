@@ -1,0 +1,99 @@
+/**
+ * Smart Shop - Prisma Schema
+ * Complete data model for the shopping assistant SaaS application.
+ * Using SQLite for this deployment (production would use PostgreSQL).
+ */
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/** User model - manages accounts, plans, and billing */
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  name           String?
+  plan           String   @default("free") // "free" | "premium" | "family"
+  budgetDefault  Float    @default(100)
+  avatarUrl      String?
+  stripeCustomerId  String?
+  stripeSubscriptionId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  shoppingLists    ShoppingList[]
+  shoppingSessions ShoppingSession[]
+}
+
+/** Shopping List - user's planned items before going to store */
+model ShoppingList {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String   @default("Ma liste de courses")
+  itemsJson String   @default("[]") // JSON array of {name, category, checked, quantity}
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/** Shopping Session - an active or completed shopping trip */
+model ShoppingSession {
+  id          String    @id @default(cuid())
+  userId      String
+  listId      String?
+  budgetLimit Float     @default(100)
+  totalSpent  Float     @default(0)
+  status      String    @default("active") // "active" | "completed" | "abandoned"
+  location    String?
+  startTime   DateTime  @default(now())
+  endTime     DateTime?
+  notes       String?
+
+  scannedItems ScannedItem[]
+  receipts     Receipt[]
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+/** Scanned Item - each product scanned during a session */
+model ScannedItem {
+  id          String   @id @default(cuid())
+  sessionId   String
+  barcode     String
+  productName String
+  price       Float
+  category    String   @default("Autre")
+  quantity    Int      @default(1)
+  imageUrl    String?
+  scannedAt   DateTime @default(now())
+
+  session ShoppingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([barcode])
+}
+
+/** Receipt - generated ticket after session completion */
+model Receipt {
+  id        String   @id @default(cuid())
+  sessionId String   @unique
+  pdfData   String?  // Base64 encoded PDF
+  csvData   String?  // CSV content
+  hash      String   @unique // SHA-256 hash of receipt content
+  createdAt DateTime @default(now())
+
+  session ShoppingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
