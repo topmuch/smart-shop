@@ -1,12 +1,12 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShoppingBag,
   Trash2,
   CheckCircle,
-  BarChart3,
+  WifiOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,8 +27,7 @@ import { BudgetBar } from './BudgetBar';
 import { EmptyState } from './EmptyState';
 import { CATEGORY_COLORS } from '@/types';
 import type { ScannedItem } from '@/types';
-import { cn } from '@/lib/utils';
-import { formatCurrency, parseMoney } from '@/lib/safe-helpers';
+import { formatCurrency } from '@/lib/safe-helpers';
 
 interface CartPanelProps {
   items: ScannedItem[];
@@ -43,13 +42,14 @@ export function CartPanel({
   onFinishSession,
   onRemoveItem,
 }: CartPanelProps) {
+  // All prices in cents
   const totalSpent = useMemo(
-    () => items.reduce((sum, item) => sum + parseMoney(item.price) * parseMoney(item.quantity), 0),
+    () => items.reduce((sum, item) => sum + item.price * item.quantity, 0),
     [items]
   );
 
   const totalItems = useMemo(
-    () => items.reduce((sum, item) => sum + parseMoney(item.quantity), 0),
+    () => items.reduce((sum, item) => sum + item.quantity, 0),
     [items]
   );
 
@@ -76,7 +76,7 @@ export function CartPanel({
           <div className="space-y-2 max-h-80 overflow-y-auto">
             <AnimatePresence mode="popLayout">
               {items.map((item) => {
-                const subtotal = parseMoney(item.price) * parseMoney(item.quantity);
+                const subtotal = item.price * item.quantity;
                 const catColor = CATEGORY_COLORS[item.category] ?? '#a3a3a3';
                 return (
                   <motion.div
@@ -90,7 +90,17 @@ export function CartPanel({
                   >
                     {/* Product info */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.productName}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium truncate">{item.productName}</p>
+                        {item.isOffline && (
+                          <span
+                            className="inline-flex items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400 shrink-0"
+                            title="En attente de synchronisation"
+                          >
+                            <WifiOff className="h-3 w-3" aria-hidden="true" />
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <Badge
                           variant="outline"

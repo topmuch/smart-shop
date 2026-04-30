@@ -1,33 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { createSessionSchema, userIdSchema } from "@/lib/validations";
+import { createSessionSchema } from "@/lib/validations";
+import { requireAuth } from "@/lib/session";
 
 /**
- * GET /api/session?userId=xxx
- * List all sessions for a user, including scannedItems.
+ * GET /api/session
+ * List all sessions for the authenticated user, including scannedItems.
+ * Uses x-user-id from middleware.
  */
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const rawUserId = searchParams.get("userId");
-
-    if (!rawUserId) {
-      return NextResponse.json(
-        { error: "userId query parameter is required" },
-        { status: 400 }
-      );
-    }
-
-    const parsed = userIdSchema.safeParse({ userId: rawUserId });
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid userId format", details: parsed.error.flatten() },
-        { status: 400 }
-      );
-    }
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
 
     const sessions = await db.shoppingSession.findMany({
-      where: { userId: parsed.data.userId },
+      where: { userId },
       include: { scannedItems: true },
       orderBy: { startTime: "desc" },
     });
@@ -44,10 +32,15 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/session
- * Create a new shopping session.
+ * Create a new shopping session for the authenticated user.
+ * Uses x-user-id from middleware.
  */
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
+
     const body = await request.json();
 
     const parsed = createSessionSchema.safeParse(body);
@@ -62,13 +55,16 @@ export async function POST(request: NextRequest) {
 
     // Build the session data
     const sessionData: Record<string, unknown> = {
+      userId,
       budgetLimit,
       location: location ?? null,
     };
 
-    // If a listId is provided, verify it exists
+    // If a listId is provided, verify it exists AND belongs to the authenticated user
     if (listId) {
-      const list = await db.shoppingList.findUnique({ where: { id: listId } });
+      const list = await db.shoppingList.findUnique({
+        where: { id: listId, userId },
+      });
       if (!list) {
         return NextResponse.json(
           { error: "Shopping list not found" },
@@ -76,31 +72,6 @@ export async function POST(request: NextRequest) {
         );
       }
       sessionData.listId = listId;
-    }
-
-    // For demo purposes, use a default userId if none provided in body
-    const userId = (body as Record<string, unknown>).userId as string | undefined;
-    if (!userId) {
-      // Try to find a demo user or create one
-      let demoUser = await db.user.findFirst();
-      if (!demoUser) {
-        demoUser = await db.user.create({
-          data: {
-            email: `demo_${Date.now()}@smartshop.app`,
-            name: "Utilisateur Demo",
-          },
-        });
-      }
-      sessionData.userId = demoUser.id;
-    } else {
-      const user = await db.user.findUnique({ where: { id: userId } });
-      if (!user) {
-        return NextResponse.json(
-          { error: "User not found" },
-          { status: 404 }
-        );
-      }
-      sessionData.userId = userId;
     }
 
     const session = await db.shoppingSession.create({

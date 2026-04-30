@@ -61,7 +61,7 @@ const SmartShopAppLazy = dynamic(
 const AdminDashboardLazy = dynamic(
   () =>
     import("@/components/admin/AdminDashboard").then(
-      (mod) => mod.AdminDashboard
+      (mod) => mod.default as React.ComponentType<{ onLogout: () => void }>
     ),
   {
     loading: () => <AdminLoadingScreen />,

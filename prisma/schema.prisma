@@ -20,9 +20,9 @@ model User {
   name           String?
   passwordHash   String?
   plan           String   @default("free") // "free" | "premium" | "family"
-  budgetDefault  Float    @default(100)
+  budgetDefault  Int      @default(10000) // in cents
   avatarUrl      String?
-  stripeCustomerId  String?
+  stripeCustomerId  String? @unique
   stripeSubscriptionId String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -30,6 +30,28 @@ model User {
   shoppingLists    ShoppingList[]
   shoppingSessions ShoppingSession[]
   authSessions     AuthSession[]
+  subscriptions    Subscription[]
+}
+
+/** Subscription - Stripe subscription management */
+model Subscription {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeId          String   @unique
+  status            String   // "active", "past_due", "canceled", "trialing", "incomplete"
+  plan              String   // "free", "premium", "family"
+  currentPeriodStart DateTime
+  currentPeriodEnd  DateTime
+  cancelAt          DateTime?
+  canceledAt        DateTime?
+  trialEnd          DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([stripeId])
+  @@index([status])
 }
 
 /** Auth Session - server-side session token storage */
@@ -67,7 +89,7 @@ model ShoppingSession {
   id          String    @id @default(cuid())
   userId      String
   listId      String?
-  budgetLimit Float     @default(100)
+  budgetLimit Int       @default(10000) // in cents
   totalSpent  Float     @default(0)
   status      String    @default("active") // "active" | "completed" | "abandoned"
   location    String?
@@ -89,7 +111,7 @@ model ScannedItem {
   sessionId   String
   barcode     String
   productName String
-  price       Float
+  price       Int      // in cents
   category    String   @default("Autre")
   quantity    Int      @default(1)
   imageUrl    String?
@@ -108,6 +130,7 @@ model Receipt {
   pdfData   String?  // Base64 encoded PDF
   csvData   String?  // CSV content
   hash      String   @unique // SHA-256 hash of receipt content
+  totalAmount Float  @default(0) // computed/display field
   createdAt DateTime @default(now())
 
   session ShoppingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
@@ -133,7 +156,7 @@ model Product {
   id          String   @id @default(cuid())
   barcode     String   @unique
   name        String
-  price       Float
+  price       Int      // in cents
   category    String   @default("Autre")
   imageUrl    String?
   brand       String?

@@ -11,6 +11,7 @@ import {
   buildSessionCookie,
   SESSION_MAX_AGE,
 } from "@/lib/auth-utils";
+import { rateLimit } from "@/lib/rate-limit";
 import { z } from "zod/v4";
 
 const registerSchema = z.object({
@@ -21,6 +22,17 @@ const registerSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit: 3 registrations per IP per hour
+    const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const rlKey = `register:${clientIp}`;
+    const rl = rateLimit(rlKey, 3, 60 * 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Trop de créations de compte. Veuillez réessayer plus tard." },
+        { status: 429 }
+      );
+    }
+
     const body = await request.json();
     const parsed = registerSchema.safeParse(body);
 
@@ -50,7 +62,7 @@ export async function POST(request: NextRequest) {
         name,
         passwordHash,
         plan: "free",
-        budgetDefault: 100,
+        budgetDefault: 10000, // in cents (100 €)
       },
     });
 

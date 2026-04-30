@@ -31,7 +31,7 @@ import { useSession } from '@/hooks/use-session';
 import { BudgetBar } from './BudgetBar';
 import { EmptyState } from './EmptyState';
 import { CATEGORY_COLORS, CATEGORIES } from '@/types';
-import { formatCurrency, parseMoney } from '@/lib/safe-helpers';
+import { formatCurrency } from '@/lib/safe-helpers';
 import { cn } from '@/lib/utils';
 import type { ScannedItem } from '@/types';
 
@@ -43,7 +43,7 @@ interface CartViewProps {
 interface CategoryGroup {
   category: string;
   items: ScannedItem[];
-  total: number;
+  total: number; // in cents
   color: string;
 }
 
@@ -71,7 +71,7 @@ export function CartView({ userId }: CartViewProps) {
     return activeSession?.scannedItems ?? [];
   }, [activeSession?.scannedItems]);
 
-  // Group items by category
+  // Group items by category — prices are in cents
   const categoryGroups = useMemo((): CategoryGroup[] => {
     const groups = new Map<string, ScannedItem[]>();
 
@@ -84,7 +84,7 @@ export function CartView({ userId }: CartViewProps) {
     // Sort categories by CATEGORIES order, then by total descending
     const result: CategoryGroup[] = [];
     for (const [category, catItems] of groups) {
-      const total = catItems.reduce((sum, item) => sum + parseMoney(item.price) * parseMoney(item.quantity), 0);
+      const total = catItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
       result.push({
         category,
         items: catItems,
@@ -108,18 +108,18 @@ export function CartView({ userId }: CartViewProps) {
   const totalSpent = useMemo(
     () =>
       items.reduce(
-        (sum, item) => sum + parseMoney(item.price) * parseMoney(item.quantity),
+        (sum, item) => sum + item.price * item.quantity,
         0
       ),
     [items]
   );
 
   const totalItems = useMemo(
-    () => items.reduce((sum, item) => sum + parseMoney(item.quantity), 0),
+    () => items.reduce((sum, item) => sum + item.quantity, 0),
     [items]
   );
 
-  const budgetLimit = parseMoney(activeSession?.budgetLimit);
+  const budgetLimit = activeSession?.budgetLimit ?? 0;
 
   const toggleCategory = (category: string) => {
     setCollapsedCategories((prev) => {
@@ -304,7 +304,7 @@ export function CartView({ userId }: CartViewProps) {
                             >
                               <div className="border-t">
                                 {group.items.map((item) => {
-                                  const subtotal = parseMoney(item.price) * parseMoney(item.quantity);
+                                  const subtotal = item.price * item.quantity;
                                   return (
                                     <motion.div
                                       key={item.id}
@@ -333,7 +333,7 @@ export function CartView({ userId }: CartViewProps) {
                                           {formatCurrency(subtotal)}
                                         </p>
                                         <p className="text-xs text-muted-foreground">
-                                          {formatCurrency(item.price)} × {parseMoney(item.quantity)}
+                                          {formatCurrency(item.price)} × {item.quantity}
                                         </p>
                                       </div>
 

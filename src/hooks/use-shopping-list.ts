@@ -45,7 +45,7 @@ export function useShoppingList(userId?: string) {
       if (defaultList) {
         setCurrentList(defaultList);
       } else if ((data as ShoppingList[]).length > 0) {
-        setCurrentList((data as ShoppingList[])[0]);
+        setCurrentList((data as ShoppingList[])[0] ?? null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");

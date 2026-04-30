@@ -4,22 +4,29 @@ import { generateReceiptSchema } from "@/lib/validations";
 import { generateReceiptPDF, generateReceiptHash } from "@/lib/export-pdf";
 import { generateCSV } from "@/lib/export-csv";
 import type { ShoppingSession, ScannedItem } from "@/types";
+import { requireAuth } from "@/lib/session";
 
 /**
  * POST /api/receipt
  * Generate a receipt for a completed session.
+ * Verifies that the session belongs to the authenticated user.
+ * All prices are in cents.
  *
  * Body: { sessionId }
  *
  * Steps:
- *  1. Validate session exists and is completed
- *  2. Generate PDF and CSV
- *  3. Create SHA-256 hash
+ *  1. Validate session exists, is completed, and belongs to user
+ *  2. Generate hash (async, using crypto.subtle)
+ *  3. Generate PDF and CSV
  *  4. Save to Receipt table
  *  5. Return receipt with hash
  */
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
+
     const body = await request.json();
 
     const parsed = generateReceiptSchema.safeParse(body);
@@ -32,9 +39,9 @@ export async function POST(request: NextRequest) {
 
     const { sessionId } = parsed.data;
 
-    // Fetch session with items
+    // Fetch session with items — must belong to the authenticated user
     const session = await db.shoppingSession.findUnique({
-      where: { id: sessionId },
+      where: { id: sessionId, userId },
       include: { scannedItems: true },
     });
 
@@ -78,14 +85,20 @@ export async function POST(request: NextRequest) {
     // Cast Prisma result to app types for export functions
     const sessionData = session as unknown as ShoppingSession & { scannedItems: ScannedItem[] };
 
-    // Generate PDF (base64)
-    const pdfBase64 = generateReceiptPDF(sessionData);
+    // Generate SHA-256 hash first (async, deterministic)
+    const hash = await generateReceiptHash(sessionData);
+
+    // Generate PDF with embedded hash
+    const pdfBase64 = generateReceiptPDF(sessionData, hash);
 
     // Generate CSV
     const csvData = generateCSV(sessionData);
 
-    // Generate SHA-256 hash
-    const hash = generateReceiptHash(sessionData);
+    // Calculate total amount (in cents) for the receipt record
+    const totalAmount = session.scannedItems.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
+    );
 
     // Save receipt to database
     const receipt = await db.receipt.create({
@@ -94,6 +107,7 @@ export async function POST(request: NextRequest) {
         pdfData: pdfBase64,
         csvData,
         hash,
+        totalAmount, // stored as Float for display/computed field
       },
     });
 

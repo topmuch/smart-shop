@@ -112,6 +112,8 @@ export interface ScannedItem {
   quantity: number;
   imageUrl?: string | null;
   scannedAt: string;
+  /** When true, this item was created offline and hasn't been synced yet. */
+  isOffline?: boolean;
 }
 
 /** Scan product input */
@@ -184,7 +186,8 @@ export interface BudgetStatus {
 
 /** Pending action in offline queue */
 export interface PendingAction {
-  id: string;
+  /** Auto-incremented ID from IndexedDB. */
+  id: number;
   type: "scan" | "create_session" | "finish_session" | "update_list";
   payload: unknown;
   createdAt: number;

@@ -11,6 +11,7 @@ import {
   buildSessionCookie,
   SESSION_MAX_AGE,
 } from "@/lib/auth-utils";
+import { rateLimit } from "@/lib/rate-limit";
 import { z } from "zod/v4";
 
 const loginSchema = z.object({
@@ -20,6 +21,7 @@ const loginSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit: 5 attempts per email per 15 minutes
     const body = await request.json();
     const parsed = loginSchema.safeParse(body);
 
@@ -31,6 +33,15 @@ export async function POST(request: NextRequest) {
     }
 
     const { email, password } = parsed.data;
+
+    const rlKey = `login:${email.toLowerCase()}`;
+    const rl = rateLimit(rlKey, 5, 15 * 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Trop de tentatives. Veuillez réessayer dans 15 minutes." },
+        { status: 429 }
+      );
+    }
 
     // Find user by email
     const user = await db.user.findUnique({ where: { email } });

@@ -617,7 +617,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
         body: JSON.stringify({
           barcode: newProduct.barcode.trim(),
           name: newProduct.name.trim(),
-          price: parseFloat(newProduct.price),
+          price: Math.round(parseFloat(newProduct.price) * 100), // convert euros to cents
           category: newProduct.category,
           brand: newProduct.brand.trim() || undefined,
         }),
@@ -730,11 +730,11 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
     }
   }
 
-  function formatPrice(price: number) {
+  function formatPrice(cents: number) {
     return new Intl.NumberFormat("fr-FR", {
       style: "currency",
       currency: "EUR",
-    }).format(price);
+    }).format(cents / 100);
   }
 
   function getPlanBadgeVariant(plan: string) {
@@ -843,8 +843,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             </form>
             <div className="mt-4 rounded-lg bg-muted/50 p-3">
               <p className="text-xs text-muted-foreground text-center">
-                <span className="font-medium">Identifiants de test :</span>{" "}
-                admin@smartshop.app / admin1234
+                Entrez vos identifiants admin
               </p>
             </div>
           </CardContent>

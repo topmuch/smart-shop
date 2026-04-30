@@ -126,12 +126,16 @@ export function ShoppingListView({ userId }: ShoppingListViewProps) {
     const item: ShoppingListItem = {
       id: crypto.randomUUID(),
       name: newItemName.trim(),
-      category: newItemCategory,
+      category: newItemCategory ?? 'Autre',
       checked: false,
       quantity: newItemQuantity,
     };
-    const updated = await addItem(selectedList.id, item);
-    if (updated) setSelectedList(updated);
+    await addItem(selectedList.id, item);
+    // Refresh selectedList from the current lists array
+    if (selectedList) {
+      const refreshed = lists.find((l) => l.id === selectedList.id);
+      if (refreshed) setSelectedList(refreshed);
+    }
     setNewItemName('');
     setNewItemQuantity(1);
   };
@@ -150,8 +154,12 @@ export function ShoppingListView({ userId }: ShoppingListViewProps) {
   // ── Delete item ──
 
   const handleRemoveItem = async (listId: string, itemId: string) => {
-    const updated = await removeItem(listId, itemId);
-    if (updated) setSelectedList(updated);
+    await removeItem(listId, itemId);
+    // Refresh selectedList from the current lists array
+    if (selectedList) {
+      const refreshed = lists.find((l) => l.id === selectedList.id);
+      if (refreshed) setSelectedList(refreshed);
+    }
   };
 
   // ── Delete list ──

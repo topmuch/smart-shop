@@ -2,14 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { scanProductSchema } from "@/lib/validations";
 import { rateLimit } from "@/lib/rate-limit";
+import { checkQuota } from "@/lib/feature-flags";
+import { requireAuth } from "@/lib/session";
 
 /**
  * POST /api/scan
  * Scan a product into a session.
+ * Price is stored in cents (Int).
  * Rate limited: 5 requests per minute per sessionId.
+ * Verifies that the session belongs to the authenticated user.
+ * Includes budget check: returns budgetWarning if near or over limit.
  */
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
+
     const body = await request.json();
 
     const parsed = scanProductSchema.safeParse(body);
@@ -46,9 +55,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify session exists and is active
+    // Verify session exists, is active, AND belongs to the authenticated user
     const session = await db.shoppingSession.findUnique({
-      where: { id: sessionId },
+      where: { id: sessionId, userId },
       include: { scannedItems: true },
     });
 
@@ -66,6 +75,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check feature flag: maxScansPerSession quota
+    const scanQuota = await checkQuota(userId, "maxScansPerSession", session.scannedItems.length);
+    if (!scanQuota.allowed) {
+      return NextResponse.json(
+        {
+          error: `You have reached the maximum number of scans per session (${scanQuota.limit}) for your ${scanQuota.plan} plan. Please upgrade to scan more items.`,
+          feature: "maxScansPerSession",
+          limit: scanQuota.limit,
+          plan: scanQuota.plan,
+        },
+        { status: 403 }
+      );
+    }
+
+    // ── Budget check ──
+    // Calculate current total (in cents) and check against budget limit
+    const currentTotal = session.scannedItems.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
+    );
+    const newItemCost = price * (quantity ?? 1);
+    const projectedTotal = currentTotal + newItemCost;
+    const budgetLimit = session.budgetLimit;
+
+    // Build budget warning if applicable (still allow the scan)
+    let budgetWarning: string | undefined;
+    if (budgetLimit > 0 && projectedTotal > budgetLimit) {
+      budgetWarning = "over_budget";
+    } else if (budgetLimit > 0 && projectedTotal > budgetLimit * 0.8) {
+      budgetWarning = "near_limit";
+    }
+
     // Check if barcode already exists in this session — increment quantity
     const existingItem = session.scannedItems.find(
       (item) => item.barcode === barcode
@@ -79,17 +120,29 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      return NextResponse.json(
-        {
-          item: updatedItem,
-          message: `Quantity updated for ${productName}`,
-          incremented: true,
-          newQuantity: updatedItem.quantity,
-        },
-        {
-          headers: { "X-RateLimit-Remaining": String(remaining) },
-        }
-      );
+      // Recalculate budget warning with updated quantity
+      const updatedTotal = currentTotal + (price * (quantity ?? 1));
+      if (budgetLimit > 0 && updatedTotal > budgetLimit) {
+        budgetWarning = "over_budget";
+      } else if (budgetLimit > 0 && updatedTotal > budgetLimit * 0.8) {
+        budgetWarning = "near_limit";
+      }
+
+      const response: Record<string, unknown> = {
+        item: updatedItem,
+        message: `Quantity updated for ${productName}`,
+        incremented: true,
+        newQuantity: updatedItem.quantity,
+        budgetTotal: updatedTotal,
+        budgetLimit,
+      };
+      if (budgetWarning) {
+        response.budgetWarning = budgetWarning;
+      }
+
+      return NextResponse.json(response, {
+        headers: { "X-RateLimit-Remaining": String(remaining) },
+      });
     }
 
     // Create new scanned item
@@ -104,14 +157,21 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json(
-      {
-        item: newItem,
-        message: `Scanned: ${productName}`,
-        incremented: false,
-      },
-      { status: 201, headers: { "X-RateLimit-Remaining": String(remaining) } }
-    );
+    const response: Record<string, unknown> = {
+      item: newItem,
+      message: `Scanned: ${productName}`,
+      incremented: false,
+      budgetTotal: projectedTotal,
+      budgetLimit,
+    };
+    if (budgetWarning) {
+      response.budgetWarning = budgetWarning;
+    }
+
+    return NextResponse.json(response, {
+      status: 201,
+      headers: { "X-RateLimit-Remaining": String(remaining) },
+    });
   } catch (error) {
     console.error("[POST /api/scan] Error:", error);
     return NextResponse.json(

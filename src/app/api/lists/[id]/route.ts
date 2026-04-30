@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { updateListSchema } from "@/lib/validations";
+import { requireAuth } from "@/lib/session";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -8,17 +9,21 @@ interface RouteParams {
 
 /**
  * GET /api/lists/[id]
- * Get a specific shopping list.
+ * Get a specific shopping list. Only if it belongs to the authenticated user.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteParams
 ) {
   try {
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
+
     const { id } = await params;
 
     const list = await db.shoppingList.findUnique({
-      where: { id },
+      where: { id, userId },
     });
 
     if (!list) {
@@ -52,13 +57,17 @@ export async function GET(
 
 /**
  * PATCH /api/lists/[id]
- * Update a shopping list.
+ * Update a shopping list. Only if it belongs to the authenticated user.
  */
 export async function PATCH(
   request: NextRequest,
   { params }: RouteParams
 ) {
   try {
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
+
     const { id } = await params;
     const body = await request.json();
 
@@ -73,7 +82,7 @@ export async function PATCH(
     const { name, items, isDefault } = parsed.data;
 
     const existing = await db.shoppingList.findUnique({
-      where: { id },
+      where: { id, userId },
     });
 
     if (!existing) {
@@ -97,7 +106,7 @@ export async function PATCH(
     if (isDefault !== undefined && isDefault) {
       // Unset other default lists for the user
       await db.shoppingList.updateMany({
-        where: { userId: existing.userId, isDefault: true },
+        where: { userId, isDefault: true },
         data: { isDefault: false },
       });
       updateData.isDefault = true;
@@ -139,17 +148,21 @@ export async function PATCH(
 
 /**
  * DELETE /api/lists/[id]
- * Delete a shopping list.
+ * Delete a shopping list. Only if it belongs to the authenticated user.
  */
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteParams
 ) {
   try {
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
+
     const { id } = await params;
 
     const list = await db.shoppingList.findUnique({
-      where: { id },
+      where: { id, userId },
     });
 
     if (!list) {

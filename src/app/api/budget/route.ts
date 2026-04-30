@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { userIdSchema } from "@/lib/validations";
+import { centsToEuros } from "@/lib/currency";
+import { checkFeatureAccess } from "@/lib/feature-flags";
+import { requireAuth } from "@/lib/session";
 
 /**
- * GET /api/budget?userId=xxx
- * Get budget analytics for a user.
+ * GET /api/budget
+ * Get budget analytics for the authenticated user.
+ * Uses x-user-id from middleware instead of query param.
+ *
+ * All monetary values returned are in cents.
  *
  * Returns:
  *   - currentMonth: { total, sessions }
@@ -14,25 +19,22 @@ import { userIdSchema } from "@/lib/validations";
  */
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const rawUserId = searchParams.get("userId");
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
 
-    if (!rawUserId) {
+    // Check feature flag: advanced analytics require premium plan
+    const access = await checkFeatureAccess(userId, "advancedDashboard");
+    if (!access.allowed) {
       return NextResponse.json(
-        { error: "userId query parameter is required" },
-        { status: 400 }
+        {
+          error: "Detailed budget analytics require a Premium plan. Please upgrade to access advanced dashboard features.",
+          feature: "advancedDashboard",
+          plan: access.plan,
+        },
+        { status: 403 }
       );
     }
-
-    const parsed = userIdSchema.safeParse({ userId: rawUserId });
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid userId format", details: parsed.error.flatten() },
-        { status: 400 }
-      );
-    }
-
-    const userId = parsed.data.userId;
 
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -68,7 +70,7 @@ export async function GET(request: NextRequest) {
       include: { scannedItems: true },
     });
 
-    // Calculate totals
+    // Calculate totals (prices are in cents, so item.price * item.quantity = cents)
     const calcTotal = (sessions: typeof currentMonthSessions) =>
       sessions.reduce(
         (sum, session) =>
@@ -102,7 +104,7 @@ export async function GET(request: NextRequest) {
     const categories = Array.from(categoryMap.entries()).map(
       ([category, data]) => ({
         category,
-        total: Math.round(data.total * 100) / 100,
+        total: data.total, // already in cents
         count: data.count,
         percentage:
           currentMonthTotal > 0
@@ -138,18 +140,18 @@ export async function GET(request: NextRequest) {
           year: "2-digit",
           month: "short",
         }),
-        total: Math.round(trendTotal * 100) / 100,
+        total: trendTotal, // in cents
         sessions: trendSessions.length,
       });
     }
 
     return NextResponse.json({
       currentMonth: {
-        total: Math.round(currentMonthTotal * 100) / 100,
+        total: currentMonthTotal, // in cents
         sessions: currentMonthSessions.length,
       },
       previousMonth: {
-        total: Math.round(previousMonthTotal * 100) / 100,
+        total: previousMonthTotal, // in cents
         sessions: previousMonthSessions.length,
       },
       categories,

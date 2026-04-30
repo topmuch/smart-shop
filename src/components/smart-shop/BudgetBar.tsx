@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { AlertTriangle, AlertOctagon } from 'lucide-react';
-import { formatCurrency, parseMoney } from '@/lib/safe-helpers';
+import { formatCurrency } from '@/lib/safe-helpers';
 
 interface BudgetBarProps {
   spent: number;
@@ -13,8 +13,8 @@ interface BudgetBarProps {
 }
 
 export function BudgetBar({ spent, limit }: BudgetBarProps) {
-  const safeSpent = parseMoney(spent);
-  const safeLimit = parseMoney(limit);
+  const safeSpent = spent ?? 0;
+  const safeLimit = limit ?? 0;
   const percentage = useMemo(() => {
     if (safeLimit <= 0) return 0;
     return (safeSpent / safeLimit) * 100;

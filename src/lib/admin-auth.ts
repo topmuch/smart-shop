@@ -11,14 +11,16 @@ import { db } from "@/lib/db";
 export const ADMIN_COOKIE_NAME = "smartshop_admin";
 export const ADMIN_SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
-/** Secret used to sign admin cookies — falls back to a default for dev */
-const ADMIN_SECRET =
-  process.env.ADMIN_SECRET || "smartshop_admin_dev_secret_2024";
+/** Secret used to sign admin cookies — MUST be set via environment variable */
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
+if (!ADMIN_SECRET) {
+  throw new Error("ADMIN_SECRET environment variable is required");
+}
 
 /** Generate HMAC-SHA256 signature for an admin id */
 function signAdminId(adminId: string): string {
   return crypto
-    .createHmac("sha256", ADMIN_SECRET)
+    .createHmac("sha256", ADMIN_SECRET!)
     .update(adminId)
     .digest("hex");
 }
@@ -80,6 +82,7 @@ export async function getAdminFromRequest(request: Request): Promise<{
     if (!match) return null;
 
     const raw = match[1];
+    if (!raw) return null;
     const colonIndex = raw.lastIndexOf(":");
     if (colonIndex === -1) return null;
 

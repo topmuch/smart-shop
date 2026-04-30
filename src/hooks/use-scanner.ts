@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import type { ScannedItem, ScanProductInput } from "@/types";
 import { enqueueAction } from "@/lib/offline-queue";
+import { lookupProduct } from "@/lib/product-database";
 import { soundManager } from "@/lib/sound-manager";
 
 /** Duration in ms before a barcode is removed from the duplicate-prevention set. */
@@ -10,7 +11,12 @@ const DUPLICATE_WINDOW_MS = 3000;
 
 /**
  * Hook for barcode scanning with double-scan prevention, haptic feedback,
- * and offline queue support.
+ * offline queue support, and **optimistic offline items**.
+ *
+ * When offline, `scanProduct()` creates a local optimistic `ScannedItem`
+ * (prefilled from the product database) so the user sees the item in their
+ * cart immediately. The action is enqueued for later sync and includes the
+ * temporary ID for reconciliation when the server responds.
  *
  * @returns An object containing scanning state and methods.
  *
@@ -50,11 +56,14 @@ export function useScanner() {
    *
    * - Checks for duplicate barcodes within a 3-second window.
    * - Triggers haptic feedback on successful scan.
-   * - Falls back to the offline queue when the device is offline.
+   * - When **offline**, creates an optimistic `ScannedItem` from the local
+   *   product database so the item appears in the cart immediately.
+   * - The offline action includes a `tempId` so that, when the action syncs
+   *   later, the server response can replace the optimistic item.
    * - Automatically clears the barcode from the duplicate set after 3 seconds.
    *
    * @param input - The scan product input containing sessionId, barcode, productName, price, etc.
-   * @returns The scanned item on success, or `null` on failure / duplicate.
+   * @returns The scanned item on success, or `null` on duplicate / unexpected error.
    */
   const scanProduct = useCallback(
     async (input: ScanProductInput): Promise<ScannedItem | null> => {
@@ -76,21 +85,54 @@ export function useScanner() {
       setError(null);
 
       try {
-        // If offline, enqueue the action for later
+        // ── Offline path: optimistic item ──
         if (
           typeof navigator !== "undefined" &&
           !navigator.onLine
         ) {
-          enqueueAction({
+          const tempId = `offline_${Date.now()}`;
+
+          // Try to pre-fill from the local product database
+          const lookup = lookupProduct(input.barcode);
+          const productName = lookup?.name ?? input.productName;
+          const price = lookup?.price ?? input.price;
+          const category = lookup?.category ?? input.category ?? "Autre";
+
+          const optimisticItem: ScannedItem = {
+            id: tempId,
+            sessionId: input.sessionId,
+            barcode: input.barcode,
+            productName,
+            price,
+            category,
+            quantity: input.quantity ?? 1,
+            imageUrl: null,
+            scannedAt: new Date().toISOString(),
+            isOffline: true,
+          };
+
+          // Enqueue action with tempId for later reconciliation
+          await enqueueAction({
             type: "scan",
-            payload: input,
+            payload: {
+              ...input,
+              productName,
+              price,
+              category,
+              tempId,
+            },
             maxRetries: 3,
           });
-          setError(null);
+
+          setLastScan(optimisticItem);
+          triggerHaptic();
+          soundManager.playSuccess();
+          soundManager.vibrate(50);
           setIsScanning(false);
-          return null;
+          return optimisticItem;
         }
 
+        // ── Online path ──
         const res = await fetch("/api/scan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

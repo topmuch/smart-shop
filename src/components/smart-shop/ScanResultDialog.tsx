@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { lookupProduct } from '@/lib/product-database';
+import { centsToEuros, eurosToCents } from '@/lib/currency';
 import { CATEGORIES, CATEGORY_COLORS } from '@/types';
 import type { ScanProductInput } from '@/types';
 import { SearchCheck, Package, AlertTriangle } from 'lucide-react';
@@ -46,8 +47,8 @@ function ScanResultForm({
 }) {
   const product = lookupProduct(barcode);
   const [productName, setProductName] = useState(product?.name ?? '');
-  const [price, setPrice] = useState(product ? String(product.price) : '');
-  const [category, setCategory] = useState<string>(product?.category ?? CATEGORIES[0]);
+  const [price, setPrice] = useState(product ? String(centsToEuros(product.price)) : '');
+  const [category, setCategory] = useState<string>(product?.category ?? CATEGORIES[0] ?? 'Autre');
   const [quantity, setQuantity] = useState(1);
 
   const handleConfirm = () => {
@@ -56,7 +57,7 @@ function ScanResultForm({
       sessionId,
       barcode,
       productName: productName.trim(),
-      price: parseFloat(price) || 0,
+      price: eurosToCents(parseFloat(price) || 0),
       category,
       quantity,
     });

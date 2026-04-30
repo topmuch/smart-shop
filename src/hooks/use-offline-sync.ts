@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { PendingAction } from "@/types";
 import {
   getPendingCount,
-  dequeueActions,
+  getAllActions,
   removeAction,
-  enqueueAction,
+  updateAction,
+  moveToFailed,
 } from "@/lib/offline-queue";
 
 /** Maximum number of retry attempts for failed actions. */
@@ -18,6 +19,11 @@ const BASE_BACKOFF_MS = 1000;
 /**
  * Hook for offline synchronization with automatic online detection,
  * periodic pending count checks, and exponential backoff retries.
+ *
+ * **Queue safety**: actions are read from the queue without removing them.
+ * Each action is only removed *after* a successful sync. On failure the
+ * action's `retries` counter is incremented in-place. After `MAX_RETRIES`
+ * the action is moved to the "failed" store and the user is notified.
  *
  * @returns An object containing the online status, pending action count,
  *          syncing state, and the sync function.
@@ -74,9 +80,11 @@ export function useOfflineSync() {
    * Sync all pending actions from the offline queue.
    *
    * For each action:
-   * 1. POST/PATCH to the appropriate endpoint.
-   * 2. On success, remove from queue.
-   * 3. On failure, retry with exponential backoff up to MAX_RETRIES times.
+   * 1. Read the queue (without removing anything).
+   * 2. POST/PATCH to the appropriate endpoint.
+   * 3. On success — remove from queue.
+   * 4. On failure — increment retries in-place; move to failed store
+   *    after MAX_RETRIES and notify the user.
    */
   const syncPendingActions = useCallback(async () => {
     if (syncInProgressRef.current) return;
@@ -84,16 +92,21 @@ export function useOfflineSync() {
     setIsSyncing(true);
 
     try {
-      const pending = dequeueActions();
+      // Read all actions WITHOUT removing them (safe — no data loss on crash)
+      const pending = await getAllActions();
       if (pending.length === 0) {
         setPendingCount(0);
         return;
       }
 
-      let syncedCount = 0;
-      let failedCount = 0;
-
       for (const action of pending) {
+        // Skip actions that have already exceeded max retries (shouldn't happen
+        // but acts as a safety net)
+        if (action.retries >= MAX_RETRIES) {
+          await moveToFailed(action);
+          continue;
+        }
+
         const endpoint = getEndpoint(action);
         const method = getMethod(action);
 
@@ -116,35 +129,73 @@ export function useOfflineSync() {
 
           if (res.ok) {
             // Success — remove from queue permanently
-            removeAction(action.id);
-            syncedCount++;
-          } else {
-            // Server error — check if we can retry
-            if (action.retries < MAX_RETRIES) {
-              const retriedAction: PendingAction = {
-                ...action,
-                retries: action.retries + 1,
-              };
-              enqueueAction(retriedAction);
-              failedCount++;
+            await removeAction(action.id);
+
+            // If this was a scan action with a temp ID, notify the UI
+            // so it can replace the optimistic offline item with the server response
+            if (action.type === "scan") {
+              try {
+                const json = await res.json();
+                const serverItem = json.item ?? json;
+                const payload = action.payload as Record<string, unknown>;
+                const tempId = payload.tempId as string | undefined;
+
+                if (tempId && typeof window !== "undefined") {
+                  window.dispatchEvent(
+                    new CustomEvent("smartshop:scan-synced", {
+                      detail: { tempId, serverItem },
+                    })
+                  );
+                }
+              } catch {
+                // Response body already consumed or not JSON — that's fine
+              }
             }
-            // If max retries exceeded, the action is silently dropped
-          }
-        } catch {
-          // Network error — check if we can retry
-          if (action.retries < MAX_RETRIES) {
-            const retriedAction: PendingAction = {
+          } else {
+            // Server error — increment retries in-place
+            const updatedAction: PendingAction = {
               ...action,
               retries: action.retries + 1,
             };
-            enqueueAction(retriedAction);
-            failedCount++;
+
+            if (updatedAction.retries >= MAX_RETRIES) {
+              await moveToFailed(action);
+              // Notify user about permanently failed action
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(
+                  new CustomEvent("smartshop:action-failed", {
+                    detail: { action },
+                  })
+                );
+              }
+            } else {
+              await updateAction(updatedAction);
+            }
+          }
+        } catch {
+          // Network error — increment retries in-place
+          const updatedAction: PendingAction = {
+            ...action,
+            retries: action.retries + 1,
+          };
+
+          if (updatedAction.retries >= MAX_RETRIES) {
+            await moveToFailed(action);
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(
+                new CustomEvent("smartshop:action-failed", {
+                  detail: { action },
+                })
+              );
+            }
+          } else {
+            await updateAction(updatedAction);
           }
         }
       }
 
       // Update the pending count after sync
-      const remaining = getPendingCount();
+      const remaining = await getPendingCount();
       setPendingCount(remaining);
     } finally {
       syncInProgressRef.current = false;
@@ -156,7 +207,7 @@ export function useOfflineSync() {
    * Update the pending action count from the queue.
    */
   const refreshPendingCount = useCallback(() => {
-    setPendingCount(getPendingCount());
+    getPendingCount().then(setPendingCount).catch(() => {});
   }, []);
 
   // Listen for online/offline events
@@ -200,6 +251,30 @@ export function useOfflineSync() {
       clearInterval(interval);
     };
   }, [refreshPendingCount]);
+
+  // Initial count
+  useEffect(() => {
+    refreshPendingCount();
+  }, [refreshPendingCount]);
+
+  // Listen for permanently-failed actions and show a toast
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { action } = (e as CustomEvent).detail as {
+        action: PendingAction;
+      };
+      // Import toast lazily to avoid circular deps at module level
+      import("sonner").then(({ toast }) => {
+        toast.error(
+          `Action "${action.type}" a échoué définitivement après ${MAX_RETRIES} tentatives.`
+        );
+      });
+    };
+
+    window.addEventListener("smartshop:action-failed", handler);
+    return () =>
+      window.removeEventListener("smartshop:action-failed", handler);
+  }, []);
 
   return {
     isOnline,

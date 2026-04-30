@@ -15,14 +15,15 @@ function escapeCsvField(value: string): string {
 }
 
 /**
- * Format a number to 2 decimal places with comma as decimal separator (French style).
+ * Format cents to euros string with 2 decimal places and comma as decimal separator (French style).
  */
-function formatCurrency(amount: number): string {
-  return amount.toFixed(2).replace(".", ",");
+function formatCentsAsEuros(cents: number): string {
+  return (cents / 100).toFixed(2).replace(".", ",");
 }
 
 /**
  * Generate a CSV string for a shopping session receipt.
+ * All prices in session data are in cents.
  *
  * Columns: Nom, Code-barres, Catégorie, Quantité, Prix unitaire, Sous-total
  */
@@ -56,8 +57,8 @@ export function generateCSV(session: SessionWithItems): string {
       escapeCsvField(item.barcode),
       escapeCsvField(item.category),
       String(item.quantity),
-      formatCurrency(item.price),
-      formatCurrency(subtotal),
+      formatCentsAsEuros(item.price),
+      formatCentsAsEuros(subtotal),
     ];
     lines.push(row.join(","));
   });
@@ -78,14 +79,14 @@ export function generateCSV(session: SessionWithItems): string {
   );
 
   lines.push(`Total articles: ${itemCount}`);
-  lines.push(`Montant total: ${formatCurrency(total)} €`);
-  lines.push(`Budget: ${formatCurrency(session.budgetLimit)} €`);
+  lines.push(`Montant total: ${formatCentsAsEuros(total)} €`);
+  lines.push(`Budget: ${formatCentsAsEuros(session.budgetLimit)} €`);
 
   const remaining = session.budgetLimit - total;
   if (remaining >= 0) {
-    lines.push(`Reste: ${formatCurrency(remaining)} €`);
+    lines.push(`Reste: ${formatCentsAsEuros(remaining)} €`);
   } else {
-    lines.push(`Dépassement: ${formatCurrency(Math.abs(remaining))} €`);
+    lines.push(`Dépassement: ${formatCentsAsEuros(Math.abs(remaining))} €`);
   }
 
   lines.push("");

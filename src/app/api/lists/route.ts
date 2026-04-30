@@ -1,33 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { createListSchema, userIdSchema } from "@/lib/validations";
+import { createListSchema } from "@/lib/validations";
+import { checkQuota } from "@/lib/feature-flags";
+import { requireAuth } from "@/lib/session";
 
 /**
- * GET /api/lists?userId=xxx
- * List all shopping lists for a user. Parses itemsJson to items array.
+ * GET /api/lists
+ * List all shopping lists for the authenticated user.
+ * Uses x-user-id from middleware.
  */
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const rawUserId = searchParams.get("userId");
-
-    if (!rawUserId) {
-      return NextResponse.json(
-        { error: "userId query parameter is required" },
-        { status: 400 }
-      );
-    }
-
-    const parsed = userIdSchema.safeParse({ userId: rawUserId });
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid userId format", details: parsed.error.flatten() },
-        { status: 400 }
-      );
-    }
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
 
     const lists = await db.shoppingList.findMany({
-      where: { userId: parsed.data.userId },
+      where: { userId },
       orderBy: [
         { isDefault: "desc" },
         { updatedAt: "desc" },
@@ -60,10 +49,15 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/lists
- * Create a new shopping list.
+ * Create a new shopping list for the authenticated user.
+ * Uses x-user-id from middleware.
  */
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
+
     const body = await request.json();
 
     const parsed = createListSchema.safeParse(body);
@@ -76,34 +70,27 @@ export async function POST(request: NextRequest) {
 
     const { name, items } = parsed.data;
 
-    // Determine userId
-    const userId = (body as Record<string, unknown>).userId as string | undefined;
-    if (!userId) {
-      let demoUser = await db.user.findFirst();
-      if (!demoUser) {
-        demoUser = await db.user.create({
-          data: {
-            email: `demo_${Date.now()}@smartshop.app`,
-            name: "Utilisateur Demo",
-          },
-        });
-      }
-      (body as Record<string, unknown>).userId = demoUser.id;
-    } else {
-      const user = await db.user.findUnique({ where: { id: userId } });
-      if (!user) {
-        return NextResponse.json(
-          { error: "User not found" },
-          { status: 404 }
-        );
-      }
-    }
+    // Check feature flag: maxLists quota
+    const currentListCount = await db.shoppingList.count({
+      where: { userId },
+    });
+    const quota = await checkQuota(userId, "maxLists", currentListCount);
 
-    const finalUserId = (body as Record<string, unknown>).userId as string;
+    if (!quota.allowed) {
+      return NextResponse.json(
+        {
+          error: `You have reached the maximum number of lists (${quota.limit}) for your ${quota.plan} plan. Please upgrade to create more lists.`,
+          feature: "maxLists",
+          limit: quota.limit,
+          plan: quota.plan,
+        },
+        { status: 403 }
+      );
+    }
 
     const list = await db.shoppingList.create({
       data: {
-        userId: finalUserId,
+        userId,
         name: name ?? "Ma liste de courses",
         itemsJson: JSON.stringify(items ?? []),
         isDefault: false,

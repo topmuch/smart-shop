@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { finishSessionSchema } from "@/lib/validations";
+import { requireAuth } from "@/lib/session";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -9,16 +10,21 @@ interface RouteParams {
 /**
  * GET /api/session/[id]
  * Get a specific session by ID with scannedItems.
+ * Only if it belongs to the authenticated user.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteParams
 ) {
   try {
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
+
     const { id } = await params;
 
     const session = await db.shoppingSession.findUnique({
-      where: { id },
+      where: { id, userId },
       include: { scannedItems: true },
     });
 
@@ -42,17 +48,22 @@ export async function GET(
 /**
  * PATCH /api/session/[id]
  * Update a session (finish or abandon).
+ * Only if it belongs to the authenticated user.
  */
 export async function PATCH(
   request: NextRequest,
   { params }: RouteParams
 ) {
   try {
-    const { id } = await params;
-    const body = await request.json();
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
 
+    const { id } = await params;
+
+    // Verify ownership
     const session = await db.shoppingSession.findUnique({
-      where: { id },
+      where: { id, userId },
       include: { scannedItems: true },
     });
 
@@ -63,6 +74,7 @@ export async function PATCH(
       );
     }
 
+    const body = await request.json();
     const { action, status } = body as { action?: string; status?: string };
 
     // Support both { action: "finish" } and { status: "completed" } formats
@@ -156,16 +168,21 @@ export async function PATCH(
 /**
  * DELETE /api/session/[id]
  * Delete a session and all its scanned items (cascade).
+ * Only if it belongs to the authenticated user.
  */
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteParams
 ) {
   try {
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
+
     const { id } = await params;
 
     const session = await db.shoppingSession.findUnique({
-      where: { id },
+      where: { id, userId },
     });
 
     if (!session) {

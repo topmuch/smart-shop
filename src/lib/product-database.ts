@@ -3,7 +3,7 @@ import type { ProductCategory } from "@/types";
 interface ProductLookup {
   barcode: string;
   name: string;
-  price: number;
+  price: number; // prices in cents
   category: ProductCategory;
 }
 
@@ -12,31 +12,31 @@ const PRODUCT_DATABASE: ProductLookup[] = [
   {
     barcode: "3017620422003",
     name: "Pommes Golden",
-    price: 2.49,
+    price: 249,
     category: "Fruits & Légumes",
   },
   {
     barcode: "3017620425003",
     name: "Bananes",
-    price: 1.69,
+    price: 169,
     category: "Fruits & Légumes",
   },
   {
     barcode: "3017620428003",
     name: "Tomates Grappe",
-    price: 2.99,
+    price: 299,
     category: "Fruits & Légumes",
   },
   {
     barcode: "3017620431003",
     name: "Carottes",
-    price: 1.29,
+    price: 129,
     category: "Fruits & Légumes",
   },
   {
     barcode: "3017620434003",
     name: "Fraises Gariguette",
-    price: 3.99,
+    price: 399,
     category: "Fruits & Légumes",
   },
 
@@ -44,19 +44,19 @@ const PRODUCT_DATABASE: ProductLookup[] = [
   {
     barcode: "3560070043460",
     name: "Baguette Tradition",
-    price: 1.15,
+    price: 115,
     category: "Boulangerie",
   },
   {
     barcode: "3560070043477",
     name: "Pain de Campagne",
-    price: 2.35,
+    price: 235,
     category: "Boulangerie",
   },
   {
     barcode: "3257981200104",
     name: "Pains au Chocolat (x4)",
-    price: 2.20,
+    price: 220,
     category: "Boulangerie",
   },
 
@@ -64,25 +64,25 @@ const PRODUCT_DATABASE: ProductLookup[] = [
   {
     barcode: "3256540000017",
     name: "Lait Demi-Écrémé 1L",
-    price: 0.95,
+    price: 95,
     category: "Produits Laitiers",
   },
   {
     barcode: "3257980700030",
     name: "Yaourt Nature (x8)",
-    price: 1.89,
+    price: 189,
     category: "Produits Laitiers",
   },
   {
     barcode: "3178530403671",
     name: "Beurre Doux 250g",
-    price: 2.39,
+    price: 239,
     category: "Produits Laitiers",
   },
   {
     barcode: "3256540500012",
     name: "Comté 12 mois 200g",
-    price: 3.29,
+    price: 329,
     category: "Produits Laitiers",
   },
 
@@ -90,19 +90,19 @@ const PRODUCT_DATABASE: ProductLookup[] = [
   {
     barcode: "2297140000008",
     name: "Poulet Fermier (kg)",
-    price: 8.99,
+    price: 899,
     category: "Viandes & Poissons",
   },
   {
     barcode: "2297140100005",
     name: "Steak Haché (x2)",
-    price: 4.29,
+    price: 429,
     category: "Viandes & Poissons",
   },
   {
     barcode: "2297140200002",
     name: "Saumon Frais (tranche)",
-    price: 6.49,
+    price: 649,
     category: "Viandes & Poissons",
   },
 
@@ -110,25 +110,25 @@ const PRODUCT_DATABASE: ProductLookup[] = [
   {
     barcode: "7613035692749",
     name: "Pâtes Penne 500g",
-    price: 0.89,
+    price: 89,
     category: "Épicerie",
   },
   {
     barcode: "8076809513753",
     name: "Sauce Tomate Basilic",
-    price: 1.49,
+    price: 149,
     category: "Épicerie",
   },
   {
     barcode: "3017760000219",
     name: "Riz Basmati 1kg",
-    price: 2.19,
+    price: 219,
     category: "Épicerie",
   },
   {
     barcode: "5449000000996",
     name: "Huile d'Olive Extra Vierge 750ml",
-    price: 5.99,
+    price: 599,
     category: "Épicerie",
   },
 
@@ -136,19 +136,19 @@ const PRODUCT_DATABASE: ProductLookup[] = [
   {
     barcode: "3124480147598",
     name: "Eau Minérale (pack 6x1.5L)",
-    price: 2.49,
+    price: 249,
     category: "Boissons",
   },
   {
     barcode: "3117910001006",
     name: "Jus d'Orange Frais 1L",
-    price: 2.89,
+    price: 289,
     category: "Boissons",
   },
   {
     barcode: "3251530000025",
     name: "Café Moulu (paquet 250g)",
-    price: 3.39,
+    price: 339,
     category: "Boissons",
   },
 
@@ -156,13 +156,13 @@ const PRODUCT_DATABASE: ProductLookup[] = [
   {
     barcode: "3017620442003",
     name: "Pizza Margherita",
-    price: 3.49,
+    price: 349,
     category: "Surgelés",
   },
   {
     barcode: "3017620445003",
     name: "Frites Surgelées 1kg",
-    price: 1.99,
+    price: 199,
     category: "Surgelés",
   },
 
@@ -170,13 +170,13 @@ const PRODUCT_DATABASE: ProductLookup[] = [
   {
     barcode: "3014260000018",
     name: "Gel Douche 400ml",
-    price: 2.69,
+    price: 269,
     category: "Hygiène & Beauté",
   },
   {
     barcode: "3014260100015",
     name: "Dentifrice 75ml",
-    price: 1.89,
+    price: 189,
     category: "Hygiène & Beauté",
   },
 
@@ -184,19 +184,19 @@ const PRODUCT_DATABASE: ProductLookup[] = [
   {
     barcode: "3014260200012",
     name: "Lessive Liquide 2L",
-    price: 5.49,
+    price: 549,
     category: "Maison & Entretien",
   },
   {
     barcode: "3014260300019",
     name: "Éponges (x3)",
-    price: 1.49,
+    price: 149,
     category: "Maison & Entretien",
   },
   {
     barcode: "3014260400016",
     name: "Nettoyant Multi-Usage 750ml",
-    price: 2.29,
+    price: 229,
     category: "Maison & Entretien",
   },
 ];

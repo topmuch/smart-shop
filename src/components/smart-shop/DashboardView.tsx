@@ -50,7 +50,8 @@ import { useDashboard } from '@/hooks/use-dashboard';
 import { CATEGORY_COLORS } from '@/types';
 import type { SessionSummary } from '@/types';
 import { cn } from '@/lib/utils';
-import { formatCurrency, formatSafeDateShort, parseMoney } from '@/lib/safe-helpers';
+import { formatCurrency, formatSafeDateShort } from '@/lib/safe-helpers';
+import { centsToEuros } from '@/lib/currency';
 import { motion } from 'framer-motion';
 
 interface DashboardViewProps {
@@ -161,8 +162,8 @@ export function DashboardView({
   const avgBudget = useMemo(() => {
     const completed = sessionHistory.filter((s) => s.status === 'completed');
     if (completed.length === 0) return 0;
-    const total = completed.reduce((sum, s) => sum + parseMoney(s.total), 0);
-    return total / completed.length;
+    const total = completed.reduce((sum, s) => sum + s.total, 0); // totals are in cents
+    return total / completed.length; // avg in cents
   }, [sessionHistory]);
 
   const momChange = monthOverMonthChange();
@@ -171,7 +172,7 @@ export function DashboardView({
     () =>
       categorySpending.map((c) => ({
         name: c.category,
-        total: Math.round(c.total * 100) / 100,
+        total: centsToEuros(c.total), // convert cents to euros for chart display
         count: c.count,
         fill: CATEGORY_COLORS[c.category] ?? '#a3a3a3',
       })),
@@ -182,7 +183,7 @@ export function DashboardView({
     () =>
       monthlyTrend.map((m) => ({
         name: m.month,
-        total: Math.round(m.total * 100) / 100,
+        total: centsToEuros(m.total), // convert cents to euros for chart display
         sessions: m.sessions,
       })),
     [monthlyTrend]

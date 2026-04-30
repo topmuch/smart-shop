@@ -10,6 +10,7 @@ import type {
 /**
  * Hook for fetching and displaying dashboard analytics data including
  * category spending breakdown, monthly trends, and session history.
+ * All monetary values from the API are in cents.
  *
  * @param userId - The ID of the current user. When provided, analytics are auto-fetched on mount.
  * @returns An object containing analytics data and helper methods.
@@ -31,18 +32,14 @@ export function useDashboard(userId?: string) {
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Format a monetary amount as "XX,XX €" using French locale formatting.
+   * Format a monetary amount (in cents) as "XX,XX €" using French locale formatting.
    *
-   * @param amount - The number to format.
+   * @param cents - The amount in cents.
    * @returns A formatted currency string, e.g. "142,50 €".
    */
-  const formatCurrency = useCallback((amount: number): string => {
-    return new Intl.NumberFormat("fr-FR", {
-      style: "currency",
-      currency: "EUR",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
+  const formatCurrency = useCallback((cents: number): string => {
+    if (cents == null || isNaN(cents)) return '0,00 €';
+    return `${(cents / 100).toFixed(2).replace('.', ',')} €`;
   }, []);
 
   /**
@@ -63,7 +60,7 @@ export function useDashboard(userId?: string) {
    * Fetch all analytics data for a given user.
    *
    * Makes two parallel requests:
-   * 1. `/api/budget` — Returns category spending, monthly trend, and month totals.
+   * 1. `/api/budget` — Returns category spending, monthly trend, and month totals (in cents).
    * 2. `/api/session` — Returns session history for the dashboard.
    */
   const fetchAnalytics = useCallback(
@@ -131,7 +128,7 @@ export function useDashboard(userId?: string) {
   }, [sessionHistory]);
 
   /**
-   * Get the total amount spent across all sessions.
+   * Get the total amount spent across all sessions (in cents).
    *
    * @returns The sum of all session totals.
    */

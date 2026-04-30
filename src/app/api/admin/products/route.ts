@@ -35,7 +35,7 @@ function unauthorized() {
 const createProductSchema = z.object({
   barcode: z.string().min(1, "Le code-barres est requis"),
   name: z.string().min(1, "Le nom du produit est requis"),
-  price: z.number().min(0, "Le prix doit être positif"),
+  price: z.number().int().min(0, "Le prix doit être positif (en centimes)"),
   category: z.string().default("Autre"),
   brand: z.string().optional(),
   imageUrl: z.string().optional(),
@@ -43,7 +43,7 @@ const createProductSchema = z.object({
 
 const updateProductSchema = z.object({
   name: z.string().min(1).optional(),
-  price: z.number().min(0).optional(),
+  price: z.number().int().min(0).optional(),
   category: z.string().optional(),
   brand: z.string().nullable().optional(),
   imageUrl: z.string().nullable().optional(),

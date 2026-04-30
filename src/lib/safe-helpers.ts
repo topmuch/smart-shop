@@ -19,17 +19,13 @@ export function parseMoney(value: unknown): number {
 }
 
 /**
- * Format a number as EUR currency ("XX,XX €") using French locale.
+ * Format cents as EUR currency ("XX,XX €") using French locale.
+ * All prices are now stored as cents (Int) in the database.
  * Returns "0,00 €" for any non-finite input.
  */
-export function formatCurrency(amount: unknown): string {
-  const num = parseMoney(amount);
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(num);
+export function formatCurrency(cents: number | null | undefined): string {
+  if (cents == null || isNaN(cents)) return '0,00 €';
+  return `${(cents / 100).toFixed(2).replace('.', ',')} €`;
 }
 
 /**

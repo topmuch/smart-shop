@@ -1,33 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { userIdSchema, updateUserSchema, createDemoUserSchema } from "@/lib/validations";
+import { updateUserSchema, createDemoUserSchema } from "@/lib/validations";
+import { requireAuth } from "@/lib/session";
 
 /**
- * GET /api/user?userId=xxx
- * Get user profile.
+ * GET /api/user
+ * Get user profile for the authenticated user.
+ * Uses x-user-id from middleware.
  */
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const rawUserId = searchParams.get("userId");
-
-    if (!rawUserId) {
-      return NextResponse.json(
-        { error: "userId query parameter is required" },
-        { status: 400 }
-      );
-    }
-
-    const parsed = userIdSchema.safeParse({ userId: rawUserId });
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid userId format", details: parsed.error.flatten() },
-        { status: 400 }
-      );
-    }
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
 
     const user = await db.user.findUnique({
-      where: { id: parsed.data.userId },
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        plan: true,
+        budgetDefault: true,
+        avatarUrl: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     if (!user) {
@@ -49,10 +47,15 @@ export async function GET(request: NextRequest) {
 
 /**
  * PATCH /api/user
- * Update user profile (name, budgetDefault, plan).
+ * Update user profile (name, budgetDefault only — plan changes via Stripe webhook).
+ * Uses x-user-id from middleware.
  */
 export async function PATCH(request: NextRequest) {
   try {
+    const auth = await requireAuth(request);
+    if (typeof auth !== "string") return auth;
+    const userId = auth;
+
     const body = await request.json();
 
     const parsed = updateUserSchema.safeParse(body);
@@ -63,8 +66,9 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const { userId, name, budgetDefault, plan } = parsed.data;
+    const { name, budgetDefault } = parsed.data;
 
+    // Verify the user exists and belongs to the authenticated user
     const existing = await db.user.findUnique({
       where: { id: userId },
     });
@@ -76,10 +80,10 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // Only allow updating name and budgetDefault — plan changes via Stripe webhook
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
     if (budgetDefault !== undefined) updateData.budgetDefault = budgetDefault;
-    if (plan !== undefined) updateData.plan = plan;
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(
@@ -91,6 +95,16 @@ export async function PATCH(request: NextRequest) {
     const user = await db.user.update({
       where: { id: userId },
       data: updateData,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        plan: true,
+        budgetDefault: true,
+        avatarUrl: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     return NextResponse.json({ user });
@@ -153,7 +167,7 @@ export async function POST(request: NextRequest) {
         email: email ?? `demo_${Date.now()}@smartshop.app`,
         name: name ?? "Utilisateur Demo",
         plan: "free",
-        budgetDefault: 100,
+        budgetDefault: 10000, // in cents (100 €)
       },
     });
 

@@ -51,6 +51,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { soundManager } from '@/lib/sound-manager';
+import { centsToEuros, eurosToCents } from '@/lib/currency';
 
 interface SettingsPanelProps {
   userId: string;
@@ -129,13 +130,13 @@ export function SettingsPanel({
   userName,
   userEmail,
   userPlan = 'free',
-  budgetDefault = 50,
+  budgetDefault = 5000, // in cents (50 €)
   onUpdateBudget,
   onUpgradePlan,
   onClearData,
 }: SettingsPanelProps) {
   const { theme, setTheme } = useTheme();
-  const [budget, setBudget] = useState(budgetDefault);
+  const [budget, setBudget] = useState(centsToEuros(budgetDefault));
   const [editingBudget, setEditingBudget] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -155,7 +156,7 @@ export function SettingsPanel({
   };
 
   const handleSaveBudget = () => {
-    onUpdateBudget?.(budget);
+    onUpdateBudget?.(eurosToCents(budget));
     setEditingBudget(false);
   };
 

@@ -1,7 +1,6 @@
 import type { ShoppingSession, ScannedItem } from "@/types";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import crypto from "crypto";
 
 interface SessionWithItems extends ShoppingSession {
   scannedItems: ScannedItem[];
@@ -9,25 +8,46 @@ interface SessionWithItems extends ShoppingSession {
 
 /**
  * Generate a SHA-256 hash from session data.
+ * Uses only deterministic fields (no timestamp) so the hash
+ * is the same every time the same receipt is regenerated.
+ * Uses crypto.subtle for both Node.js and browser compatibility.
  */
-function generateHash(session: SessionWithItems): string {
+async function generateHash(session: SessionWithItems): Promise<string> {
+  const total = session.scannedItems.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0
+  );
+
   const data = JSON.stringify({
     sessionId: session.id,
-    total: session.scannedItems.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    ),
+    total,
     itemCount: session.scannedItems.length,
-    timestamp: new Date().toISOString(),
   });
 
-  return crypto.createHash("sha256").update(data).digest("hex");
+  const encoder = new TextEncoder();
+  const dataBuffer = encoder.encode(data);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Convert cents to euros string with 2 decimal places.
+ */
+function centsToEuroString(cents: number): string {
+  return (cents / 100).toFixed(2);
 }
 
 /**
  * Generate a receipt PDF as a base64 string using jsPDF.
+ * All prices in session data are in cents.
+ * @param session - The shopping session with items
+ * @param hash - Pre-computed SHA-256 hash to embed in the PDF
  */
-export function generateReceiptPDF(session: SessionWithItems): string {
+export function generateReceiptPDF(
+  session: SessionWithItems,
+  hash: string
+): string {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -85,7 +105,7 @@ export function generateReceiptPDF(session: SessionWithItems): string {
   y += 6;
 
   doc.text(
-    `Budget : ${session.budgetLimit.toFixed(2)} €`,
+    `Budget : ${centsToEuroString(session.budgetLimit)} €`,
     margin,
     y
   );
@@ -96,8 +116,8 @@ export function generateReceiptPDF(session: SessionWithItems): string {
     item.productName,
     item.category,
     String(item.quantity),
-    `${item.price.toFixed(2)} €`,
-    `${(item.price * item.quantity).toFixed(2)} €`,
+    `${centsToEuroString(item.price)} €`,
+    `${centsToEuroString(item.price * item.quantity)} €`,
   ]);
 
   autoTable(doc, {
@@ -127,8 +147,9 @@ export function generateReceiptPDF(session: SessionWithItems): string {
   });
 
   // Get the Y position after the table
-  y = (doc as unknown as Record<string, number>).lastAutoTable?.finalY
-    ? (doc as unknown as Record<string, number>).lastAutoTable.finalY + 10
+  const lastAutoTable = (doc as unknown as Record<string, Record<string, number>>).lastAutoTable;
+  y = lastAutoTable?.finalY
+    ? lastAutoTable.finalY + 10
     : y + 60;
 
   // ── Totals ──
@@ -151,7 +172,7 @@ export function generateReceiptPDF(session: SessionWithItems): string {
   doc.setFont("helvetica", "bold");
   doc.setTextColor(50, 50, 50);
   doc.text("Total :", pageWidth - margin - 60, y + 4);
-  doc.text(`${total.toFixed(2)} €`, pageWidth - margin, y + 4, {
+  doc.text(`${centsToEuroString(total)} €`, pageWidth - margin, y + 4, {
     align: "right",
   });
   y += 10;
@@ -166,14 +187,14 @@ export function generateReceiptPDF(session: SessionWithItems): string {
   if (isOverBudget) {
     doc.setTextColor(239, 68, 68); // Red
     doc.text(
-      `⚠ Dépassement du budget : +${Math.abs(remaining).toFixed(2)} €`,
+      `⚠ Dépassement du budget : +${centsToEuroString(Math.abs(remaining))} €`,
       margin,
       y
     );
   } else {
     doc.setTextColor(34, 197, 94); // Green
     doc.text(
-      `✓ Budget respecté — Reste : ${remaining.toFixed(2)} €`,
+      `✓ Budget respecté — Reste : ${centsToEuroString(remaining)} €`,
       margin,
       y
     );
@@ -186,8 +207,6 @@ export function generateReceiptPDF(session: SessionWithItems): string {
   y += 8;
 
   // ── SHA-256 Hash ──
-  const hash = generateHash(session);
-
   doc.setFontSize(7);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(150, 150, 150);
@@ -218,9 +237,11 @@ export function generateReceiptPDF(session: SessionWithItems): string {
 /**
  * Generate a SHA-256 hash for session receipt data.
  * Exported separately so it can be used in API routes.
+ * Now async because crypto.subtle is async.
+ * Deterministic: uses sessionId + total + itemCount only (no timestamp).
  */
-export function generateReceiptHash(
+export async function generateReceiptHash(
   session: SessionWithItems
-): string {
+): Promise<string> {
   return generateHash(session);
 }

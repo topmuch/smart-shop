@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { comparePassword } from "@/lib/auth-utils";
 import { buildAdminCookie } from "@/lib/admin-auth";
+import { rateLimit } from "@/lib/rate-limit";
 import { z } from "zod/v4";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,17 @@ const loginSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit: 5 attempts per IP per 15 minutes
+    const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const rlKey = `admin-login:${clientIp}`;
+    const rl = rateLimit(rlKey, 5, 15 * 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Trop de tentatives. Veuillez réessayer dans 15 minutes." },
+        { status: 429 }
+      );
+    }
+
     const body = await request.json();
     const parsed = loginSchema.safeParse(body);
 

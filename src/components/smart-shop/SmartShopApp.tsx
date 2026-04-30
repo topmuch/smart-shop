@@ -6,7 +6,7 @@
  * Receives user data as props (from the page router / auth system).
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ShoppingCart,
@@ -60,7 +60,7 @@ const pageVariants = {
 };
 
 const pageTransition = {
-  type: "spring",
+  type: "spring" as const,
   stiffness: 300,
   damping: 30,
 };
@@ -91,8 +91,42 @@ export function SmartShopApp({
   /* --- State --- */
   const [activeTab, setActiveTab] = useState<AppTab>("lists");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [budgetDefault, setBudgetDefault] = useState<number>(10000); // in cents, fallback
 
   const { isOnline, pendingCount, isSyncing } = useOfflineSync();
+
+  /* --- Fetch user profile for budgetDefault --- */
+  useEffect(() => {
+    if (!userId) return;
+    async function loadUserProfile() {
+      try {
+        const res = await fetch("/api/user");
+        if (res.ok) {
+          const { user } = await res.json();
+          if (user?.budgetDefault) {
+            setBudgetDefault(user.budgetDefault);
+          }
+        }
+      } catch {
+        // Silently fail — fallback budgetDefault is used
+      }
+    }
+    loadUserProfile();
+  }, [userId]);
+
+  /* --- Budget update handler --- */
+  const handleUpdateBudget = useCallback(async (budgetInCents: number) => {
+    setBudgetDefault(budgetInCents);
+    try {
+      await fetch("/api/user", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ budgetDefault: budgetInCents }),
+      });
+    } catch {
+      // Silently fail — local state is already updated
+    }
+  }, []);
 
   /* --- Derived user object --- */
   const user = {
@@ -100,7 +134,7 @@ export function SmartShopApp({
     name: userName,
     email: userEmail,
     plan: userPlan as "free" | "premium" | "family",
-    budgetDefault: 100,
+    budgetDefault,
     avatarUrl: null,
     createdAt: new Date().toISOString(),
   };
@@ -285,7 +319,7 @@ export function SmartShopApp({
               id={`panel-${activeTab}`}
               aria-label={NAV_TABS.find((t) => t.id === activeTab)?.label}
             >
-              {renderActiveTab(activeTab, user)}
+              {renderActiveTab(activeTab, user, handleUpdateBudget)}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -320,7 +354,7 @@ export function SmartShopApp({
                   <Icon
                     className={cn(
                       "h-5 w-5 transition-transform duration-200",
-                      isActive && "scale-110"
+                      isActive && "scale:110"
                     )}
                   />
                   {isActive && (
@@ -356,12 +390,16 @@ export function SmartShopApp({
    Tab Content Renderer
    ============================================================ */
 
-function renderActiveTab(tab: AppTab, user: { id: string; name: string | null; email: string; plan: string }) {
+function renderActiveTab(
+  tab: AppTab,
+  user: { id: string; name: string | null; email: string; plan: string; budgetDefault: number },
+  onUpdateBudget: (budgetInCents: number) => Promise<void>
+) {
   switch (tab) {
     case "lists":
       return <ShoppingListView userId={user.id} />;
     case "scanner":
-      return <ScannerView userId={user.id} />;
+      return <ScannerView userId={user.id} budgetDefault={user.budgetDefault} />;
     case "cart":
       return <CartView userId={user.id} />;
     case "dashboard":
@@ -378,6 +416,8 @@ function renderActiveTab(tab: AppTab, user: { id: string; name: string | null; e
           userName={user.name}
           userEmail={user.email}
           userPlan={user.plan as "free" | "premium" | "family"}
+          budgetDefault={user.budgetDefault}
+          onUpdateBudget={onUpdateBudget}
         />
       );
     default:
